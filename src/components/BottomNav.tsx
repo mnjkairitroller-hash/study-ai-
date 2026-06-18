@@ -18,7 +18,7 @@ export default function BottomNav({ currentTab, setTab }: BottomNavProps) {
   ];
 
   return (
-    <div className="fixed bottom-6 left-0 right-0 z-50 flex justify-center pointer-events-none px-4">
+    <div className="fixed bottom-6 left-0 right-0 z-50 flex justify-center pointer-events-none px-4 md:hidden">
       <nav className="pointer-events-auto flex items-center justify-between p-2 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-black/5 dark:border-white/10 rounded-[2rem] shadow-2xl shadow-indigo-500/10 support-backdrop-blur:bg-white/60 w-full max-w-sm">
         {tabs.map((tab) => {
           const Icon = tab.icon;

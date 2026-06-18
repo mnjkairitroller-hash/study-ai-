@@ -33,7 +33,9 @@ function MainApp() {
   return (
     <div className="min-h-screen transition-colors duration-300">
       <PWAInstall />
-      {currentTab !== 'player' && currentTab !== 'chapterDetails' && <Header />}
+      {currentTab !== 'player' && currentTab !== 'chapterDetails' && (
+        <Header currentTab={currentTab} setTab={setCurrentTab} />
+      )}
       
       <main>
         {currentTab === 'dashboard' && <MainDashboard setTab={setCurrentTab} setPlayingVideo={setPlayingVideo} />}

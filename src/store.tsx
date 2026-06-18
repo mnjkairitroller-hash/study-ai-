@@ -5,6 +5,8 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { getLevelInfo } from './lib/utils';
 
 export interface UserData {
+  displayName?: string;
+  photoURL?: string;
   points: number;
   level: number;
   streak: number;
@@ -17,6 +19,8 @@ export interface UserData {
 }
 
 const DEFAULT_USER_DATA: UserData = {
+  displayName: '',
+  photoURL: '',
   points: 0,
   level: 1,
   streak: 1,
@@ -58,6 +62,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (docSnap.exists()) {
             const data = docSnap.data() as UserData;
             
+            // Backport displayName or photoURL if missing in Firestore doc
+            const missingName = !data.displayName;
+            const missingPhoto = !data.photoURL;
+            if (missingName || missingPhoto) {
+              const finalName = currentUser.displayName || currentUser.email?.split('@')[0] || 'Student';
+              const finalPhoto = currentUser.photoURL || '';
+              updateDoc(userRef, {
+                ...(missingName ? { displayName: finalName } : {}),
+                ...(missingPhoto ? { photoURL: finalPhoto } : {})
+              });
+            }
+
             // Check streak
             const today = new Date().toDateString();
             const lastActiveDate = new Date(data.lastActive || new Date().toISOString()).toDateString();
@@ -78,8 +94,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setUserData({ ...data, streak: newStreak });
           } else {
             // Create initial user data
-            setDoc(userRef, DEFAULT_USER_DATA);
-            setUserData(DEFAULT_USER_DATA);
+            const initialData: UserData = {
+              ...DEFAULT_USER_DATA,
+              displayName: currentUser.displayName || currentUser.email?.split('@')[0] || 'Student',
+              photoURL: currentUser.photoURL || ''
+            };
+            setDoc(userRef, initialData);
+            setUserData(initialData);
           }
           setLoading(false);
         });

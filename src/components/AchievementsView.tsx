@@ -54,8 +54,8 @@ export default function AchievementsView() {
   };
 
   return (
-    <div className="p-4 max-w-sm mx-auto pb-28 pt-6">
-      <div className="mb-8 text-center">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto pb-32 pt-6">
+      <div className="mb-8 text-center max-w-2xl mx-auto">
         <motion.div 
           initial={{ scale: 0, rotate: -180 }}
           animate={{ scale: 1, rotate: 0 }}
@@ -68,118 +68,125 @@ export default function AchievementsView() {
         <p className="text-slate-500 font-medium mt-2">Level up by earning Points!</p>
       </div>
 
-      <div className="mb-10 p-5 bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm">
-        <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-          <CheckCircle2 className="text-indigo-500" />
-          Recent Milestones
-        </h3>
-        {completedTitles.length === 0 ? (
-          <p className="text-sm text-slate-400 text-center py-4">No lessons completed yet. Start learning!</p>
-        ) : (
-          <div className="space-y-3">
-            {completedTitles.slice(-5).reverse().map((title, i) => (
-              <motion.div 
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.1 }}
-                key={i} 
-                className="flex items-start gap-3 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl"
-              >
-                <div className="mt-0.5 text-emerald-500">
-                  <CheckCircle size={16} />
-                </div>
-                <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  {title}
-                </div>
-              </motion.div>
-            ))}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+        {/* Left Column: Recent Milestones */}
+        <div className="lg:col-span-1 space-y-6">
+          <div className="p-5 bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+            <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+              <CheckCircle2 className="text-indigo-500" />
+              Recent Milestones
+            </h3>
+            {completedTitles.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-4">No lessons completed yet. Start learning!</p>
+            ) : (
+              <div className="space-y-3">
+                {completedTitles.slice(-5).reverse().map((title, i) => (
+                  <motion.div 
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.1 }}
+                    key={i} 
+                    className="flex items-start gap-3 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl"
+                  >
+                    <div className="mt-0.5 text-emerald-500">
+                      <CheckCircle size={16} />
+                    </div>
+                    <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                      {title}
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </div>
 
-      <h3 className="font-black text-xl mb-6 pl-2 text-slate-800 dark:text-white flex items-center gap-2">
-        <Award className="text-indigo-500" />
-        Level Map
-      </h3>
+        {/* Right Column: Level Map */}
+        <div className="lg:col-span-2 bg-white dark:bg-slate-900/40 p-6 sm:p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800/40">
+          <h3 className="font-black text-xl mb-8 pl-2 text-slate-800 dark:text-white flex items-center gap-2">
+            <Award className="text-indigo-500" />
+            Level Map & Timeline Tracking
+          </h3>
 
-      <div className="relative pl-6">
-        {/* Animated line connecting levels */}
-        <div className="absolute left-[33px] top-6 bottom-6 w-1 bg-slate-200 dark:bg-slate-800 rounded-full"></div>
-        <motion.div 
-          initial={{ height: 0 }}
-          animate={{ height: `${((currentLevel - 1) / (maxLevelShown - 1)) * 100}%` }}
-          transition={{ duration: 1.5, ease: "easeOut" }}
-          className="absolute left-[33px] top-6 w-1 bg-gradient-to-b from-indigo-500 to-amber-500 rounded-full origin-top"
-        ></motion.div>
+          <div className="relative pl-6">
+            {/* Animated line connecting levels */}
+            <div className="absolute left-[33px] top-6 bottom-6 w-1 bg-slate-200 dark:bg-slate-800 rounded-full"></div>
+            <motion.div 
+              initial={{ height: 0 }}
+              animate={{ height: `${((currentLevel - 1) / (maxLevelShown - 1)) * 100}%` }}
+              transition={{ duration: 1.5, ease: "easeOut" }}
+              className="absolute left-[33px] top-6 w-1 bg-gradient-to-b from-indigo-500 to-amber-500 rounded-full origin-top"
+            ></motion.div>
 
-        <motion.div 
-          variants={containerVariants}
-          initial="hidden"
-          animate="show"
-          className="space-y-12"
-        >
-          {levels.map((level, i) => {
-            const isUnlocked = level <= currentLevel;
-            const isCurrent = level === currentLevel;
-            
-            return (
-              <motion.div key={level} variants={itemVariants} className="relative flex items-center gap-6">
-                <div className="absolute -left-10 w-24 text-right">
-                  {isCurrent && (
-                     <div className="absolute right-14 top-1/2 -translate-y-1/2 flex items-center">
-                        <span className="text-xs font-black text-indigo-500 mr-2 uppercase tracking-whider animate-pulse">You</span>
-                     </div>
-                  )}
-                </div>
+            <motion.div 
+              variants={containerVariants}
+              initial="hidden"
+              animate="show"
+              className="space-y-12"
+            >
+              {levels.map((level, i) => {
+                const isUnlocked = level <= currentLevel;
+                const isCurrent = level === currentLevel;
+                
+                return (
+                  <motion.div key={level} variants={itemVariants} className="relative flex items-center gap-6">
+                    <div className="absolute -left-10 w-24 text-right">
+                      {isCurrent && (
+                         <div className="absolute right-14 top-1/2 -translate-y-1/2 flex items-center">
+                            <span className="text-xs font-black text-indigo-500 mr-2 uppercase tracking-whider animate-pulse">You</span>
+                         </div>
+                      )}
+                    </div>
 
-                <div className={cn(
-                  "relative z-10 w-16 h-16 rounded-2xl flex items-center justify-center border-4 shadow-lg transition-all duration-500",
-                  isCurrent ? "bg-indigo-500 border-indigo-200 dark:border-indigo-900 shadow-indigo-500/40 scale-125 rotate-3" :
-                  isUnlocked ? "bg-white dark:bg-slate-800 border-indigo-500 dark:border-indigo-400" :
-                  "bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800 grayscale"
-                )}>
-                  {isCurrent ? (
-                    <Trophy className="text-white drop-shadow-md" size={28} />
-                  ) : isUnlocked ? (
-                    <Star className="text-indigo-500" size={24} fill="currentColor" />
-                  ) : (
-                    <Lock className="text-slate-400" size={24} />
-                  )}
-                  
-                  {isCurrent && (
-                    <motion.div 
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-                      className="absolute -inset-2 border-2 border-dashed border-indigo-400 dark:border-indigo-500/50 rounded-[1.4rem] opacity-50 pointer-events-none"
-                    ></motion.div>
-                  )}
-                </div>
-
-                <div className="flex-1">
-                  <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden">
-                    {isUnlocked && !isCurrent && (
-                      <div className="absolute right-0 top-0 bottom-0 w-1.5 bg-indigo-500"></div>
-                    )}
-                     {isCurrent && (
-                      <div className="absolute right-0 top-0 bottom-0 w-1.5 bg-amber-500"></div>
-                    )}
-                    <h4 className={cn(
-                      "font-black text-xl mb-1",
-                      isCurrent ? "text-amber-500" : isUnlocked ? "text-slate-800 dark:text-white" : "text-slate-400"
+                    <div className={cn(
+                      "relative z-10 w-16 h-16 rounded-2xl flex items-center justify-center border-4 shadow-lg transition-all duration-500",
+                      isCurrent ? "bg-indigo-500 border-indigo-200 dark:border-indigo-900 shadow-indigo-500/40 scale-125 rotate-3" :
+                      isUnlocked ? "bg-white dark:bg-slate-800 border-indigo-500 dark:border-indigo-400" :
+                      "bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800 grayscale"
                     )}>
-                      Level {level}
-                    </h4>
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                      {isUnlocked ? 'Completed' : `Requires ${LEVEL_THRESHOLDS[level - 1] || level * 500} Pts`}
-                    </p>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
-        </motion.div>
-      </div>
+                      {isCurrent ? (
+                        <Trophy className="text-white drop-shadow-md" size={28} />
+                      ) : isUnlocked ? (
+                        <Star className="text-indigo-500" size={24} fill="currentColor" />
+                      ) : (
+                        <Lock className="text-slate-400" size={24} />
+                      )}
+                      
+                      {isCurrent && (
+                        <motion.div 
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
+                          className="absolute -inset-2 border-2 border-dashed border-indigo-400 dark:border-indigo-500/50 rounded-[1.4rem] opacity-50 pointer-events-none"
+                        ></motion.div>
+                      )}
+                    </div>
 
+                    <div className="flex-1">
+                      <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden">
+                        {isUnlocked && !isCurrent && (
+                          <div className="absolute right-0 top-0 bottom-0 w-1.5 bg-indigo-500"></div>
+                        )}
+                         {isCurrent && (
+                          <div className="absolute right-0 top-0 bottom-0 w-1.5 bg-amber-500"></div>
+                        )}
+                        <h4 className={cn(
+                          "font-black text-xl mb-1",
+                          isCurrent ? "text-amber-500" : isUnlocked ? "text-slate-800 dark:text-white" : "text-slate-400"
+                        )}>
+                          Level {level}
+                        </h4>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                          {isUnlocked ? 'Completed' : `Requires ${LEVEL_THRESHOLDS[level - 1] || level * 500} Pts`}
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </motion.div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -94,7 +94,7 @@ export default function ChapterDetailsView({ chapter, setTab, setPlayingVideo }:
     <div className="bg-slate-50 dark:bg-slate-950 min-h-[100dvh]">
       {/* Header */}
       <div className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
-        <div className="max-w-2xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <button 
             onClick={() => setTab('study')}
             className="w-10 h-10 -ml-2 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
@@ -116,7 +116,7 @@ export default function ChapterDetailsView({ chapter, setTab, setPlayingVideo }:
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto p-4 pb-24">
+      <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 pb-32">
         {/* Videos List */}
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800 dark:text-white">
@@ -131,88 +131,90 @@ export default function ChapterDetailsView({ chapter, setTab, setPlayingVideo }:
           </button>
         </div>
 
-        <div className="space-y-3">
+        <div>
           {!chapterData.videos || chapterData.videos.length === 0 ? (
             <div className="text-center py-12 bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-300 dark:border-slate-700">
                 <Youtube size={48} className="mx-auto mb-4 text-slate-300 dark:text-slate-600" />
                <p className="font-medium text-slate-500 dark:text-slate-400">No videos in this chapter yet.</p>
             </div>
           ) : (
-            chapterData.videos.map((video: any, index: number) => {
-              const isCompleted = userData?.completedLessons?.includes(video.id);
-              
-              return (
-                <motion.div 
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  key={video.id} 
-                  onClick={() => playVideo(video)}
-                  className={`bg-white dark:bg-slate-900 rounded-3xl p-3 border transition-all cursor-pointer flex items-center gap-4 ${isCompleted ? 'border-emerald-200 dark:border-emerald-900/50 shadow-sm' : 'border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-md'}`}
-                >
-                  <div className="relative w-32 h-24 bg-slate-800 rounded-2xl overflow-hidden shrink-0 shadow-inner">
-                    <img src={`https://img.youtube.com/vi/${extractYtId(video.videoUrl)}/mqdefault.jpg`} className={`w-full h-full object-cover transition-all duration-500 ${isCompleted ? 'opacity-90' : 'opacity-80 group-hover:opacity-100 group-hover:scale-110'}`} alt="Thumbnail" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                       <PlayCircle size={32} className={`text-white drop-shadow-lg ${isCompleted ? 'opacity-0' : 'opacity-100'}`} fill="rgba(0,0,0,0.4)" strokeWidth={1.5} />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {chapterData.videos.map((video: any, index: number) => {
+                const isCompleted = userData?.completedLessons?.includes(video.id);
+                
+                return (
+                  <motion.div 
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    key={video.id} 
+                    onClick={() => playVideo(video)}
+                    className={`bg-white dark:bg-slate-900 rounded-3xl p-3 border transition-all cursor-pointer flex items-center gap-4 ${isCompleted ? 'border-emerald-200 dark:border-emerald-900/50 shadow-sm' : 'border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-md'}`}
+                  >
+                    <div className="relative w-32 h-24 bg-slate-800 rounded-2xl overflow-hidden shrink-0 shadow-inner">
+                      <img src={`https://img.youtube.com/vi/${extractYtId(video.videoUrl)}/mqdefault.jpg`} className={`w-full h-full object-cover transition-all duration-500 ${isCompleted ? 'opacity-90' : 'opacity-80 group-hover:opacity-100 group-hover:scale-110'}`} alt="Thumbnail" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                         <PlayCircle size={32} className={`text-white drop-shadow-lg ${isCompleted ? 'opacity-0' : 'opacity-100'}`} fill="rgba(0,0,0,0.4)" strokeWidth={1.5} />
+                      </div>
+                      <div className="absolute bottom-2 left-2 bg-white/20 backdrop-blur-md px-2 py-0.5 rounded-lg text-[10px] font-bold text-white tracking-wide border border-white/20">
+                        PART {index + 1}
+                      </div>
                     </div>
-                    <div className="absolute bottom-2 left-2 bg-white/20 backdrop-blur-md px-2 py-0.5 rounded-lg text-[10px] font-bold text-white tracking-wide border border-white/20">
-                      PART {index + 1}
-                    </div>
-                  </div>
-                  
-                  <div className="flex-1 min-w-0 py-1">
-                    <h3 className={`font-bold text-[1.05rem] leading-snug line-clamp-2 transition-colors mb-2 ${isCompleted ? 'text-slate-500 dark:text-slate-400' : 'text-slate-800 dark:text-white'}`}>
-                      {video.title}
-                    </h3>
-                    {isCompleted ? (
-                      <div className="text-xs font-bold text-emerald-500 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                        Completed
-                      </div>
-                    ) : userData?.lessonProgress?.[video.id] ? (
-                      <div className="text-xs font-bold text-amber-500 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                        Resume
-                      </div>
-                    ) : (
-                      <div className="text-xs font-bold text-indigo-500 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
-                        Up Next
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="pr-3 pl-1 flex items-center justify-center">
-                    {/* Circular Progress Indicator */}
-                    <div className="relative w-12 h-12 flex items-center justify-center">
+                    
+                    <div className="flex-1 min-w-0 py-1">
+                      <h3 className={`font-bold text-[1.05rem] leading-snug line-clamp-2 transition-colors mb-2 ${isCompleted ? 'text-slate-500 dark:text-slate-400' : 'text-slate-800 dark:text-white'}`}>
+                        {video.title}
+                      </h3>
                       {isCompleted ? (
-                        <>
-                           <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                              <circle cx="18" cy="18" r="16" fill="none" className="stroke-emerald-100 dark:stroke-emerald-900/30" strokeWidth="4"></circle>
-                              <circle cx="18" cy="18" r="16" fill="none" className="stroke-emerald-500" strokeWidth="4" strokeDasharray="100 100" strokeDashoffset="0"></circle>
-                           </svg>
-                           <div className="absolute inset-0 flex items-center justify-center text-emerald-500">
-                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                           </div>
-                        </>
+                        <div className="text-xs font-bold text-emerald-500 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                          Completed
+                        </div>
+                      ) : userData?.lessonProgress?.[video.id] ? (
+                        <div className="text-xs font-bold text-amber-500 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                          Resume
+                        </div>
                       ) : (
-                        <>
-                           <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                              <circle cx="18" cy="18" r="16" fill="none" className="stroke-slate-200 dark:stroke-slate-800" strokeWidth="4"></circle>
-                              {userData?.lessonProgress?.[video.id] && (
-                                <circle cx="18" cy="18" r="16" fill="none" className="stroke-amber-500" strokeWidth="4" strokeDasharray="100 100" strokeDashoffset="50"></circle>
-                              )}
-                           </svg>
-                           <div className={`absolute inset-0 flex items-center justify-center ${userData?.lessonProgress?.[video.id] ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'}`}>
-                             <PlayCircle size={18} strokeWidth={2.5} />
-                           </div>
-                        </>
+                        <div className="text-xs font-bold text-indigo-500 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                          Up Next
+                        </div>
                       )}
                     </div>
-                  </div>
-                </motion.div>
-              );
-            })
+
+                    <div className="pr-3 pl-1 flex items-center justify-center">
+                      {/* Circular Progress Indicator */}
+                      <div className="relative w-12 h-12 flex items-center justify-center">
+                        {isCompleted ? (
+                          <>
+                             <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                                <circle cx="18" cy="18" r="16" fill="none" className="stroke-emerald-100 dark:stroke-emerald-900/30" strokeWidth="4"></circle>
+                                <circle cx="18" cy="18" r="16" fill="none" className="stroke-emerald-500" strokeWidth="4" strokeDasharray="100 100" strokeDashoffset="0"></circle>
+                             </svg>
+                             <div className="absolute inset-0 flex items-center justify-center text-emerald-500">
+                               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                             </div>
+                          </>
+                        ) : (
+                          <>
+                             <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                                <circle cx="18" cy="18" r="16" fill="none" className="stroke-slate-200 dark:stroke-slate-800" strokeWidth="4"></circle>
+                                {userData?.lessonProgress?.[video.id] && (
+                                  <circle cx="18" cy="18" r="16" fill="none" className="stroke-amber-500" strokeWidth="4" strokeDasharray="100 100" strokeDashoffset="50"></circle>
+                                )}
+                             </svg>
+                             <div className={`absolute inset-0 flex items-center justify-center ${userData?.lessonProgress?.[video.id] ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'}`}>
+                               <PlayCircle size={18} strokeWidth={2.5} />
+                             </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
           )}
         </div>
       </div>
