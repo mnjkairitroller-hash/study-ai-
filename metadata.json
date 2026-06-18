@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "IntelliLearn Portal",
+  "description": "Interactive study tracker with custom YouTube streaming, real-time sync, and instantly generated 10-question AI concept quizzes to review any lesson.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

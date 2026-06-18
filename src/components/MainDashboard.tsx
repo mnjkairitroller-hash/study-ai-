@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, limit } from 'firebase/firestore';
 import { useAppContext } from '../store';
 import { Flame, PlayCircle, Target, CheckCircle2, Trophy, Sparkles, BookHeart, BrainCircuit, Award, Users, Calendar, HelpCircle, Check, AlertCircle } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -93,7 +93,8 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
   }, []);
 
   useEffect(() => {
-    const qUsers = query(collection(db, 'users'), orderBy('points', 'desc'));
+    if (!user) return;
+    const qUsers = query(collection(db, 'users'), orderBy('points', 'desc'), limit(10));
     const unsubUsers = onSnapshot(qUsers, (snap) => {
       const list = snap.docs.map(doc => {
         const val = doc.data();
@@ -119,7 +120,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
     if (optIdx === currentBooster.correct) {
       setClaiming(true);
       try {
-        await addPoints(3);
+        await addPoints(1);
         setBoosterSolved(true);
         localStorage.setItem(boosterKey, 'answered');
       } catch (err) {
@@ -381,7 +382,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
                 }`}
               >
                 <div className="font-extrabold flex items-center gap-1.5 mb-1 text-slate-800 dark:text-white uppercase tracking-wider text-[11px]">
-                  <span>{boosterSolved ? '🎉 Correct Answer! (+3 Points Granted)' : '❌ Incorrect choice'}</span>
+                  <span>{boosterSolved ? '🎉 Correct Answer! (+1 Point Granted)' : '❌ Incorrect choice'}</span>
                 </div>
                 <div>{currentBooster.explanation}</div>
               </motion.div>

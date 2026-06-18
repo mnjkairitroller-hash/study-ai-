@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppContext } from '../store';
 import confetti from 'canvas-confetti';
-import { Save, CheckCircle, ArrowLeft, PenTool, Clock } from 'lucide-react';
+import { Save, CheckCircle, ArrowLeft, PenTool, Clock, Brain, Sparkles, Check, X, Award, AlertCircle, RotateCcw, ChevronRight, HelpCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 
 declare global {
@@ -58,11 +58,68 @@ function extractYtId(url: string) {
 }
 
 export default function VideoPlayerView({ video, setTab }: { video: any, setTab: (tab: string) => void }) {
-  const { markLessonComplete, updateLessonProgress, userData } = useAppContext();
+  const { markLessonComplete, updateLessonProgress, userData, addPoints } = useAppContext();
   const [notes, setNotes] = useState('');
   const [isCompleted, setIsCompleted] = useState(false);
 
   const playerRef = useRef<any>(null);
+
+  // Quiz-specific states
+  const [quizQuestions, setQuizQuestions] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem(`quiz_questions_${video.id}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isLoadingQuiz, setIsLoadingQuiz] = useState(false);
+  const [quizError, setQuizError] = useState<string | null>(null);
+  
+  const [currentQuizStep, setCurrentQuizStep] = useState(0); // 0 = Intro, 1 = Active quiz, 2 = Completed
+  const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
+  const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [quizScore, setQuizScore] = useState(0);
+  const [hasAnsweredCurrent, setHasAnsweredCurrent] = useState(false);
+  
+  // Track claim points
+  const [pointsClaimed, setPointsClaimed] = useState<boolean>(() => {
+    return localStorage.getItem(`quiz_claimed_${video.id}`) === 'true';
+  });
+
+  const handleGenerateQuiz = async () => {
+    setIsLoadingQuiz(true);
+    setQuizError(null);
+    try {
+      const res = await fetch('/api/gemini/quiz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: video.title,
+          description: video.description || ""
+        })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to generate study quiz');
+      }
+
+      const data = await res.json();
+      if (data.success && Array.isArray(data.questions)) {
+        setQuizQuestions(data.questions);
+        localStorage.setItem(`quiz_questions_${video.id}`, JSON.stringify(data.questions));
+        setCurrentQuizStep(1); // Go to Active quiz directly
+      } else {
+        throw new Error('Invalid quiz response from server');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setQuizError(err.message || 'Error creating study quiz');
+    } finally {
+      setIsLoadingQuiz(false);
+    }
+  };
 
   // Load initial progress from Firebase
   const initialWatchedSeconds = userData?.lessonProgress?.[video.id] || 0;
@@ -79,6 +136,9 @@ export default function VideoPlayerView({ video, setTab }: { video: any, setTab:
   saveProgressRef.current = async (currentTime: number, force = false) => {
     const rounded = Math.floor(currentTime);
     if (rounded <= 0 || isAlreadyCompleted) return;
+
+    // Only setWatchedSeconds if it's a real update from the player
+    setWatchedSeconds(currentTime);
 
     const diff = Math.abs(rounded - lastSavedProgressRef.current);
     // Speed limits: Save if changed by 20+ seconds, or forced on pause/unmount, or reached end of video
@@ -128,6 +188,17 @@ export default function VideoPlayerView({ video, setTab }: { video: any, setTab:
               try {
                 if (event.data === 1) { // PLAYING (1)
                   setIsPlaying(true);
+                } else if (event.data === 0) { // ENDED (0)
+                  setIsPlaying(false);
+                  setIsCompleted(true);
+                  if (!isAlreadyCompleted) {
+                    markLessonComplete(video.id, duration >= 1800 ? 2 : 1);
+                    confetti({
+                      particleCount: 100,
+                      spread: 80,
+                      origin: { y: 0.8 }
+                    });
+                  }
                 } else {
                   setIsPlaying(false);
                   if (event.target && typeof event.target.getCurrentTime === 'function') {
@@ -189,8 +260,8 @@ export default function VideoPlayerView({ video, setTab }: { video: any, setTab:
         if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
           try {
             const currentTime = playerRef.current.getCurrentTime();
+            // Ensure we are actually getting a new time and not just a zero if player is buggy
             if (currentTime >= 0) {
-              setWatchedSeconds(currentTime);
               saveProgressRef.current(currentTime, false);
             }
           } catch (e) {
@@ -202,7 +273,7 @@ export default function VideoPlayerView({ video, setTab }: { video: any, setTab:
     return () => {
       if (ticker) clearInterval(ticker);
     };
-  }, [isPlaying, isAlreadyCompleted, isCompleted]);
+  }, [isPlaying, isAlreadyCompleted, isCompleted, video.id]);
 
   const handleComplete = async () => {
     if (isCompleted || isAlreadyCompleted) return;
@@ -290,6 +361,398 @@ export default function VideoPlayerView({ video, setTab }: { video: any, setTab:
                 Downloading is not supported
               </span>
             </div>
+          </div>
+
+          {/* AI Concept Quiz Panel */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-md space-y-4 mt-6">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-gradient-to-tr from-indigo-500 to-violet-600 text-white rounded-2xl shadow-md shadow-indigo-100 dark:shadow-none">
+                  <Brain size={22} className="animate-pulse" />
+                </div>
+                <div>
+                  <h2 className="font-extrabold text-slate-800 dark:text-white flex items-center gap-1.5 leading-none">
+                    AI Video Concept Quiz
+                    <span className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest flex items-center gap-0.5 animate-bounce">
+                      <Sparkles size={10} /> 10 Questions
+                    </span>
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Review core topics precisely explained in this video</p>
+                </div>
+              </div>
+              
+              {quizQuestions.length > 0 && currentQuizStep === 0 && (
+                <button
+                  onClick={() => setCurrentQuizStep(1)}
+                  className="text-xs font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 px-3.5 py-2 rounded-xl transition-all"
+                >
+                  Resume Quiz
+                </button>
+              )}
+            </div>
+
+            {/* ERROR DISPLAY */}
+            {quizError && (
+              <div className="flex items-start gap-2.5 bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 p-3.5 rounded-2xl border border-red-100 dark:border-red-900/50 text-xs font-semibold">
+                <AlertCircle size={18} className="shrink-0 text-red-500 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-bold">Generation failed</p>
+                  <p className="opacity-90">{quizError}</p>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 0: Quiz Intro or Setup */}
+            {currentQuizStep === 0 && (
+              <div className="space-y-4 pt-2">
+                {quizQuestions.length === 0 ? (
+                  <>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed font-semibold">
+                      Think you master the material from this video? Generate a 10-question review quiz powered by Gemini AI!
+                    </p>
+                    <div className="bg-slate-50 dark:bg-slate-950/50 p-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 space-y-3">
+                      <h4 className="text-xs font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Mastery checklist:</h4>
+                      <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-2 font-medium">
+                        <li className="flex items-center gap-2">
+                          <CheckCircle size={14} className="text-emerald-500 animate-pulse" />
+                          Generates 10 intelligent multiple-choice questions matching video content
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <CheckCircle size={14} className="text-emerald-500 animate-pulse" />
+                          Instant educational review feedback on every selection
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <CheckCircle size={14} className="text-emerald-500 animate-pulse" />
+                          Earn <span className="text-amber-500 dark:text-amber-400 font-bold">+10 Mastery Points</span> for scoring 80% or more!
+                        </li>
+                      </ul>
+                    </div>
+
+                    <button
+                      onClick={handleGenerateQuiz}
+                      disabled={isLoadingQuiz}
+                      className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-extrabold py-3.5 px-4 rounded-2xl shadow-lg shadow-indigo-100 dark:shadow-none flex items-center justify-center gap-2 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+                    >
+                      {isLoadingQuiz ? (
+                        <>
+                          <span className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                          Generating concept questions...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={18} />
+                          Generate Lesson Review Quiz (+10 Points Challenge)
+                        </>
+                      )}
+                    </button>
+                  </>
+                ) : (
+                  <div className="text-center py-6 space-y-4">
+                    <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-500 rounded-full flex items-center justify-center mx-auto border border-emerald-100 dark:border-emerald-900/40">
+                      <CheckCircle size={32} />
+                    </div>
+                    <div className="space-y-1">
+                      <h3 className="font-extrabold text-slate-800 dark:text-white">AI Concept Quiz Ready</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto font-medium">
+                        A 10-question concepts matching quiz is prepared for this video. Test your understanding and solidify your skills!
+                      </p>
+                    </div>
+                    <div className="flex gap-3 justify-center max-w-xs mx-auto">
+                      <button
+                        onClick={() => setCurrentQuizStep(1)}
+                        className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl transition-all cursor-pointer"
+                      >
+                        Start Practicing
+                      </button>
+                      <button
+                        onClick={handleGenerateQuiz}
+                        disabled={isLoadingQuiz}
+                        className="flex-1 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold py-2.5 rounded-xl transition-all text-xs flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <RotateCcw size={12} /> Regenerate
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* LOADING STATE - DETAILED SHIMMER / TEXTS */}
+            {isLoadingQuiz && (
+              <div className="space-y-4 py-8 text-center">
+                <div className="relative w-16 h-16 mx-auto">
+                  <div className="absolute inset-0 rounded-full border-4 border-indigo-100 dark:border-indigo-950 animate-pulse" />
+                  <div className="absolute inset-x-0 top-0 bottom-0 rounded-full border-4 border-t-indigo-600 border-r-indigo-600 border-b-transparent border-l-transparent animate-spin" />
+                  <div className="absolute inset-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-full flex items-center justify-center">
+                    <Sparkles size={20} className="text-indigo-600 dark:text-indigo-400 animate-pulse" />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-bold text-slate-800 dark:text-white">Synthesizing Educational Content...</p>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto font-semibold">
+                    Gemini AI is examining titles and lesson topics to design 10 perfectly matched review questions...
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 1: ACTIVE QUIZ */}
+            {currentQuizStep === 1 && quizQuestions.length > 0 && (
+              <div className="space-y-4">
+                {/* Quiz progress header */}
+                <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+                  <span>Question {currentQuestionIdx + 1} of 10</span>
+                  <span className="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 px-2.5 py-1 rounded-full">Score: {quizScore}/10</span>
+                </div>
+                
+                {/* Horizontal Progress Bar */}
+                <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-indigo-500 to-violet-505 transition-all duration-300"
+                    style={{ width: `${((currentQuestionIdx + 1) / 10) * 100}%` }}
+                  />
+                </div>
+
+                {/* The Question */}
+                <div className="pt-2">
+                  <h3 className="text-base font-extrabold text-slate-800 dark:text-white leading-relaxed">
+                    {quizQuestions[currentQuestionIdx]?.question}
+                  </h3>
+                </div>
+
+                {/* Multiple Choice Options */}
+                <div className="grid grid-cols-1 gap-3">
+                  {quizQuestions[currentQuestionIdx]?.options.map((option: string, opIdx: number) => {
+                    const isSelected = selectedOption === opIdx;
+                    const isCorrectOp = quizQuestions[currentQuestionIdx]?.correct === opIdx;
+                    
+                    let cardStyle = "border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-700 dark:text-slate-300 active:scale-[0.99] cursor-pointer";
+                    let prefixCircleStyle = "bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700";
+
+                    if (hasAnsweredCurrent) {
+                      if (isCorrectOp) {
+                        cardStyle = "bg-emerald-500/10 border-emerald-500 dark:border-emerald-500/40 text-emerald-800 dark:text-emerald-300 font-bold";
+                        prefixCircleStyle = "bg-emerald-500 text-white";
+                      } else if (isSelected) {
+                        cardStyle = "bg-red-500/10 border-red-500 dark:border-red-500/40 text-red-800 dark:text-red-300 font-bold";
+                        prefixCircleStyle = "bg-red-500 text-white";
+                      } else {
+                        cardStyle = "border-slate-150 dark:border-slate-850 opacity-40 text-slate-500 dark:text-slate-500 cursor-not-allowed";
+                      }
+                    } else if (isSelected) {
+                      cardStyle = "border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 font-semibold";
+                      prefixCircleStyle = "bg-indigo-600 text-white";
+                    }
+
+                    return (
+                      <button
+                        key={opIdx}
+                        disabled={hasAnsweredCurrent}
+                        onClick={() => setSelectedOption(opIdx)}
+                        className={`group w-full max-w-full text-left p-4 rounded-xl border font-semibold flex items-start gap-3.5 transition-all text-sm outline-none ${cardStyle}`}
+                      >
+                        <span className={`w-6 h-6 rounded-full shrink-0 text-xs font-extrabold flex items-center justify-center transition-colors ${prefixCircleStyle}`}>
+                          {hasAnsweredCurrent ? (
+                            isCorrectOp ? <Check size={14} /> : (isSelected ? <X size={14} /> : String.fromCharCode(65 + opIdx))
+                          ) : (
+                            String.fromCharCode(65 + opIdx)
+                          )}
+                        </span>
+                        <span className="flex-1 pt-0.5 whitespace-normal break-words leading-relaxed">{option}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Immediate Answer Submission */}
+                {!hasAnsweredCurrent && selectedOption !== null && (
+                  <motion.button
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    onClick={() => {
+                      setHasAnsweredCurrent(true);
+                      const correctIdx = quizQuestions[currentQuestionIdx]?.correct;
+                      if (selectedOption === correctIdx) {
+                        setQuizScore(prev => prev + 1);
+                        if (currentQuestionIdx === 9) {
+                          // Award passing sounds/celebration
+                          confetti({
+                            particleCount: 50,
+                            spread: 45
+                          });
+                        }
+                      }
+                    }}
+                    className="w-full bg-slate-800 dark:bg-slate-150 hover:bg-slate-900 dark:hover:bg-white text-white dark:text-black font-extrabold py-3 rounded-xl transition-all text-sm shadow-md cursor-pointer"
+                  >
+                    Check Answer
+                  </motion.button>
+                )}
+
+                {/* Explanation block once answered */}
+                {hasAnsweredCurrent && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="bg-indigo-50/50 dark:bg-slate-950/40 p-4 rounded-2xl border border-indigo-100/50 dark:border-slate-850/60 space-y-2 mt-4"
+                  >
+                    <div className="flex items-center gap-1.5 text-xs font-black uppercase text-indigo-700 dark:text-indigo-300 tracking-wider">
+                      <HelpCircle size={14} /> Concept Explanation
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
+                      {quizQuestions[currentQuestionIdx]?.explanation}
+                    </p>
+                  </motion.div>
+                )}
+
+                {/* Navigation Button */}
+                {hasAnsweredCurrent && (
+                  <div className="pt-2">
+                    <button
+                      onClick={() => {
+                        const isLast = currentQuestionIdx === 9;
+                        if (isLast) {
+                          setCurrentQuizStep(2); // Go to finished page
+                        } else {
+                          setCurrentQuestionIdx(prev => prev + 1);
+                          setSelectedOption(null);
+                          setHasAnsweredCurrent(false);
+                        }
+                      }}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 text-sm shadow-md cursor-pointer"
+                    >
+                      {currentQuestionIdx === 9 ? 'Complete Challenge & View Score' : 'Next Concept Question'}
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* STEP 2: COMPLETED VIEW */}
+            {currentQuizStep === 2 && (
+              <div className="space-y-6 text-center py-6">
+                <div className="relative w-24 h-24 mx-auto">
+                  <div className="absolute inset-0 bg-yellow-500/10 rounded-full animate-ping opacity-25" />
+                  <div className="relative w-24 h-24 rounded-full bg-gradient-to-tr from-yellow-400 to-amber-500 flex items-center justify-center border border-yellow-200">
+                    <Award size={48} className="text-white drop-shadow-md" />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Lesson Mastered!</h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 font-bold">
+                    You answered <span className="text-indigo-600 dark:text-indigo-400 font-black">{quizScore} of 10</span> questions correctly
+                  </p>
+                  
+                  {/* Mastery Badge / Performance Level */}
+                  <div className="pt-1">
+                    {quizScore === 10 ? (
+                      <span className="inline-block bg-emerald-105 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 text-xs font-black px-4 py-1.5 rounded-full uppercase tracking-wider">
+                        Perfect Score Master 🌟
+                      </span>
+                    ) : quizScore >= 8 ? (
+                      <span className="inline-block bg-indigo-100 text-indigo-800 dark:bg-indigo-950/45 dark:text-indigo-300 text-xs font-black px-4 py-1.5 rounded-full uppercase tracking-wider">
+                        Concept Specialist Gold Medal 🥇
+                      </span>
+                    ) : quizScore >= 6 ? (
+                      <span className="inline-block bg-orange-100 text-orange-850 dark:bg-orange-950/45 dark:text-orange-300 text-xs font-black px-4 py-1.5 rounded-full uppercase tracking-wider">
+                        Conceptual Learner Silver Medal 🥈
+                      </span>
+                    ) : (
+                      <span className="inline-block bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 text-xs font-black px-4 py-1.5 rounded-full uppercase tracking-wider">
+                        Study Apprentice 🎯
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Score commentary */}
+                <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-850 max-w-sm mx-auto text-xs text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+                  {quizScore === 10 ? (
+                    "Stellar work! You clearly absorbed the core nuances, equations, and exact instructions explained in the streaming lesson."
+                  ) : quizScore >= 8 ? (
+                    "Impressive output! You have successfully mastered almost all concepts with great critical clarity."
+                  ) : quizScore >= 6 ? (
+                    "Good foundational attempt. Review the private notes you made or rewind to specific parts in the YT stream to master the rest!"
+                  ) : (
+                    "Mastery takes practice. Rewatch the key segments in the original video player above, and retry the quiz to claim your points!"
+                  )}
+                </div>
+
+                {/* Points Reward Challenge Block */}
+                <div className="bg-gradient-to-br from-indigo-50 to-violet-50 dark:from-slate-900/40 dark:to-slate-900/60 p-5 rounded-3xl border border-indigo-100/50 dark:border-slate-800/80 max-w-sm mx-auto space-y-4">
+                  <div className="flex items-center gap-2 justify-center text-sm font-extrabold text-indigo-700 dark:text-indigo-300">
+                    <Sparkles size={18} /> Mastery Challenge Reward
+                  </div>
+                  
+                  {pointsClaimed ? (
+                    <div className="bg-emerald-500/10 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 font-extrabold py-3 px-4 rounded-2xl border border-emerald-500/30 text-xs flex items-center justify-center gap-2">
+                      <Check size={16} /> Concept points claimed (+10 Points)
+                    </div>
+                  ) : quizScore >= 8 ? (
+                    <button
+                      onClick={async () => {
+                        try {
+                          await addPoints(10);
+                          setPointsClaimed(true);
+                          localStorage.setItem(`quiz_claimed_${video.id}`, 'true');
+                          confetti({
+                            particleCount: 150,
+                            spread: 80,
+                            origin: { y: 0.6 }
+                          });
+                        } catch (err) {
+                          console.error("Failed to claim concept score:", err);
+                        }
+                      }}
+                      className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-extrabold py-3 rounded-2xl shadow-md flex items-center justify-center gap-2 transition-transform hover:-translate-y-0.5 text-xs animate-bounce cursor-pointer"
+                    >
+                      <Award size={16} /> Claim +10 Mastery Points!
+                    </button>
+                  ) : (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 font-extrabold leading-snug">
+                      Score at least 8/10 to unlock the +10 Mastery Points challenge reward for this video!
+                    </p>
+                  )}
+                </div>
+
+                {/* Retry or Reset options */}
+                <div className="flex gap-3 justify-center pt-2 max-w-xs mx-auto">
+                  <button
+                    onClick={() => {
+                      setCurrentQuestionIdx(0);
+                      setSelectedOption(null);
+                      setHasAnsweredCurrent(false);
+                      setQuizScore(0);
+                      setCurrentQuizStep(1); // Set directly to step 1
+                    }}
+                    className="flex-1 bg-slate-800 dark:bg-slate-100 hover:bg-slate-900 dark:hover:bg-white text-white dark:text-black font-extrabold py-2.5 rounded-xl transition-all text-xs flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw size={12} /> Retry Quiz
+                  </button>
+                  
+                  <button
+                    onClick={() => {
+                      handleGenerateQuiz();
+                    }}
+                    disabled={isLoadingQuiz}
+                    className="flex-1 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold py-2.5 rounded-xl transition-all text-xs flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer"
+                  >
+                    {isLoadingQuiz ? (
+                      <>
+                        <span className="w-3 h-3 rounded-full border border-slate-400 border-t-transparent animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={12} /> Regenerate
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
