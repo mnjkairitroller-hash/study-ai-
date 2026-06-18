@@ -255,12 +255,12 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
             </div>
           </motion.div>
 
-          {/* AI Smart Routine Section */}
+          {/* Tuition Videos Section */}
           <motion.div variants={item} className="bg-slate-50/50 dark:bg-slate-900/10 p-5 rounded-[2.5rem] border border-slate-100 dark:border-slate-800/40">
             <div className="flex items-center justify-between mb-5 px-1">
               <h3 className="font-bold text-xl flex items-center gap-2 text-slate-800 dark:text-white">
-                <BrainCircuit className="text-indigo-500" size={26} />
-                Today's AI Routine <span className="text-xs font-bold text-slate-500 ml-2 hidden sm:inline">(~2 Hrs Goal)</span>
+                <PlayCircle className="text-indigo-500" size={26} />
+                Tuition Videos <span className="text-xs font-bold text-slate-500 ml-2 hidden sm:inline">(Online Only)</span>
               </h3>
               <button onClick={() => setTab('study')} className="text-xs font-bold text-indigo-500 hover:text-indigo-600 transition-colors bg-indigo-50 dark:bg-indigo-500/10 px-4 py-2 rounded-full uppercase tracking-widest">
                 All Library
@@ -275,7 +275,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
                    <h4 className="font-bold text-slate-700 dark:text-slate-300">You're all caught up!</h4>
                    <p className="text-sm text-slate-500 mt-1">Awesome job completing your lessons.</p>
                    <br />
-                 </div>
+                </div>
               ) : (
                 todayRoutine.map((video, idx) => {
                   // Extract YT ID for thumbnail
