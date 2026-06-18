@@ -84,6 +84,12 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
   const [claiming, setClaiming] = useState<boolean>(false);
 
   useEffect(() => {
+    setBoosterSolved(localStorage.getItem(boosterKey) === 'answered');
+    setSelectedOpt(null);
+    setShowExplanation(false);
+  }, [boosterKey]);
+
+  useEffect(() => {
     const q = query(collection(db, 'chapters'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));

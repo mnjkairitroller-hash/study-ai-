@@ -57,17 +57,19 @@ function extractYtId(url: string) {
   return '';
 }
 
-export default function VideoPlayerView({ video, setTab }: { video: any, setTab: (tab: string) => void }) {
-  const { markLessonComplete, updateLessonProgress, userData, addPoints } = useAppContext();
+export default function VideoPlayerView({ video, setTab, hasActiveChapter }: { video: any, setTab: (tab: string) => void, hasActiveChapter?: boolean }) {
+  const { markLessonComplete, updateLessonProgress, userData, addPoints, user } = useAppContext();
   const [notes, setNotes] = useState('');
   const [isCompleted, setIsCompleted] = useState(false);
 
   const playerRef = useRef<any>(null);
+  const userId = user?.uid || '';
 
   // Quiz-specific states
   const [quizQuestions, setQuizQuestions] = useState<any[]>(() => {
     try {
-      const saved = localStorage.getItem(`quiz_questions_${video.id}`);
+      const prefix = userId ? `${userId}_` : '';
+      const saved = localStorage.getItem(`${prefix}quiz_questions_${video.id}`);
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -84,7 +86,8 @@ export default function VideoPlayerView({ video, setTab }: { video: any, setTab:
   
   // Track claim points
   const [pointsClaimed, setPointsClaimed] = useState<boolean>(() => {
-    return localStorage.getItem(`quiz_claimed_${video.id}`) === 'true';
+    const prefix = userId ? `${userId}_` : '';
+    return localStorage.getItem(`${prefix}quiz_claimed_${video.id}`) === 'true';
   });
 
   const handleGenerateQuiz = async () => {
@@ -108,7 +111,8 @@ export default function VideoPlayerView({ video, setTab }: { video: any, setTab:
       const data = await res.json();
       if (data.success && Array.isArray(data.questions)) {
         setQuizQuestions(data.questions);
-        localStorage.setItem(`quiz_questions_${video.id}`, JSON.stringify(data.questions));
+        const prefix = userId ? `${userId}_` : '';
+        localStorage.setItem(`${prefix}quiz_questions_${video.id}`, JSON.stringify(data.questions));
         setCurrentQuizStep(1); // Go to Active quiz directly
       } else {
         throw new Error('Invalid quiz response from server');
@@ -127,10 +131,68 @@ export default function VideoPlayerView({ video, setTab }: { video: any, setTab:
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
+  const [actualSecondsWatched, setActualSecondsWatched] = useState<number>(() => {
+    try {
+      const prefix = userId ? `${userId}_` : '';
+      const saved = localStorage.getItem(`${prefix}actual_seconds_watched_${video.id}`);
+      if (saved) {
+        return Number(saved);
+      }
+    } catch {}
+    return initialWatchedSeconds;
+  });
+
+  // Limit/cap actual seconds watched at video duration
+  useEffect(() => {
+    if (duration > 0 && actualSecondsWatched > duration) {
+      setActualSecondsWatched(duration);
+    }
+  }, [duration, actualSecondsWatched]);
+
+  useEffect(() => {
+    // Reset local state when video or user changes
+    const prefix = userId ? `${userId}_` : '';
+    setNotes('');
+    setIsCompleted(false);
+    
+    // Sync pointsClaimed
+    const claimedSaved = localStorage.getItem(`${prefix}quiz_claimed_${video.id}`) === 'true';
+    setPointsClaimed(claimedSaved);
+
+    // Sync quiz questions
+    let qs: any[] = [];
+    try {
+      const qsSaved = localStorage.getItem(`${prefix}quiz_questions_${video.id}`);
+      if (qsSaved) qs = JSON.parse(qsSaved);
+    } catch {}
+    setQuizQuestions(qs);
+    setCurrentQuizStep(0); 
+    setCurrentQuestionIdx(0);
+    setSelectedOption(null);
+    setQuizScore(0);
+    setHasAnsweredCurrent(false);
+
+    // Sync actual seconds watched
+    const initProg = userData?.lessonProgress?.[video.id] || 0;
+    setWatchedSeconds(initProg);
+    lastSavedProgressRef.current = initProg;
+    lastPlayheadRef.current = initProg;
+
+    let actualSec = initProg;
+    try {
+      const savedActual = localStorage.getItem(`${prefix}actual_seconds_watched_${video.id}`);
+      if (savedActual) {
+        actualSec = Number(savedActual);
+      }
+    } catch {}
+    setActualSecondsWatched(actualSec);
+  }, [video.id, userId]);
+
   const isAlreadyCompleted = userData?.completedLessons?.includes(video.id);
 
   // Refs to handle auto-saving without stale closures or spamming firestore
   const lastSavedProgressRef = useRef<number>(initialWatchedSeconds);
+  const lastPlayheadRef = useRef<number>(initialWatchedSeconds);
   const saveProgressRef = useRef<(time: number, force?: boolean) => void>(() => {});
 
   saveProgressRef.current = async (currentTime: number, force = false) => {
@@ -178,6 +240,7 @@ export default function VideoPlayerView({ video, setTab }: { video: any, setTab:
                 }
                 if (initialWatchedSeconds > 0) {
                   event.target.seekTo(initialWatchedSeconds, true);
+                  lastPlayheadRef.current = initialWatchedSeconds;
                 }
               } catch (e) {
                 console.error("Error in onReady:", e);
@@ -188,6 +251,9 @@ export default function VideoPlayerView({ video, setTab }: { video: any, setTab:
               try {
                 if (event.data === 1) { // PLAYING (1)
                   setIsPlaying(true);
+                  if (event.target && typeof event.target.getCurrentTime === 'function') {
+                    lastPlayheadRef.current = event.target.getCurrentTime();
+                  }
                 } else if (event.data === 0) { // ENDED (0)
                   setIsPlaying(false);
                   setIsCompleted(true);
@@ -256,12 +322,35 @@ export default function VideoPlayerView({ video, setTab }: { video: any, setTab:
   useEffect(() => {
     let ticker: any = null;
     if (isPlaying && !isAlreadyCompleted && !isCompleted) {
+      // Re-align on starts
+      if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
+        try {
+          lastPlayheadRef.current = playerRef.current.getCurrentTime();
+        } catch (e) {}
+      }
+
       ticker = setInterval(() => {
         if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
           try {
             const currentTime = playerRef.current.getCurrentTime();
-            // Ensure we are actually getting a new time and not just a zero if player is buggy
             if (currentTime >= 0) {
+              const prevPlayhead = lastPlayheadRef.current;
+              const diff = currentTime - prevPlayhead;
+
+              // Only increase verified watch score if they played sequentially (e.g. 0 to 3 seconds forward per tick)
+              if (diff > 0 && diff < 3) {
+                setActualSecondsWatched(prev => {
+                  const updated = Math.min(prev + diff, duration || Infinity);
+                  const prefix = userId ? `${userId}_` : '';
+                  localStorage.setItem(`${prefix}actual_seconds_watched_${video.id}`, String(Math.floor(updated)));
+                  return updated;
+                });
+              }
+
+              // Keep syncing the last known playhead pos
+              lastPlayheadRef.current = currentTime;
+
+              // Save the playhead position so that they resume where they paused
               saveProgressRef.current(currentTime, false);
             }
           } catch (e) {
@@ -273,7 +362,7 @@ export default function VideoPlayerView({ video, setTab }: { video: any, setTab:
     return () => {
       if (ticker) clearInterval(ticker);
     };
-  }, [isPlaying, isAlreadyCompleted, isCompleted, video.id]);
+  }, [isPlaying, isAlreadyCompleted, isCompleted, video.id, duration]);
 
   const handleComplete = async () => {
     if (isCompleted || isAlreadyCompleted) return;
@@ -315,9 +404,9 @@ export default function VideoPlayerView({ video, setTab }: { video: any, setTab:
      return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const progressPercentage = duration > 0 ? Math.min((watchedSeconds / duration) * 100, 100) : 0;
+  const progressPercentage = duration > 0 ? Math.min((actualSecondsWatched / duration) * 100, 100) : 0;
   // Require at least 90% watch time to complete
-  const canComplete = duration > 0 && (watchedSeconds >= (duration * 0.9)) && !isAlreadyCompleted && !isCompleted;
+  const canComplete = duration > 0 && (actualSecondsWatched >= (duration * 0.9)) && !isAlreadyCompleted && !isCompleted;
 
   return (
     <motion.div 
@@ -327,9 +416,18 @@ export default function VideoPlayerView({ video, setTab }: { video: any, setTab:
     >
       <div className="bg-slate-900 border-b border-slate-800 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
-          <button onClick={() => setTab('chapterDetails')} className="flex items-center gap-2 font-bold hover:opacity-70 transition-opacity text-indigo-400">
+          <button 
+            onClick={() => {
+              if (hasActiveChapter) {
+                setTab('chapterDetails');
+              } else {
+                setTab('dashboard');
+              }
+            }} 
+            className="flex items-center gap-2 font-bold hover:opacity-70 transition-opacity text-indigo-400"
+          >
             <ArrowLeft size={20} />
-            Back to Chapter
+            {hasActiveChapter ? 'Back to Chapter' : 'Back to Dashboard'}
           </button>
           <div className="font-bold text-xs tracking-widest uppercase opacity-50 truncate max-w-[250px]">{video.chapterTitle || 'Chapter'}</div>
         </div>
@@ -696,7 +794,8 @@ export default function VideoPlayerView({ video, setTab }: { video: any, setTab:
                         try {
                           await addPoints(10);
                           setPointsClaimed(true);
-                          localStorage.setItem(`quiz_claimed_${video.id}`, 'true');
+                          const prefix = userId ? `${userId}_` : '';
+                          localStorage.setItem(`${prefix}quiz_claimed_${video.id}`, 'true');
                           confetti({
                             particleCount: 150,
                             spread: 80,
@@ -772,13 +871,13 @@ export default function VideoPlayerView({ video, setTab }: { video: any, setTab:
           
           {/* Actual Progress Tracker */}
           {(duration > 0 || isAlreadyCompleted || isCompleted) && (
-            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-bold flex items-center gap-2 text-indigo-500">
-                  <Clock size={16} /> Progress
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                  <Clock size={14} /> Verified Watch-time
                 </span>
                 <span className="text-xs font-bold text-slate-500">
-                  {(isAlreadyCompleted || isCompleted) ? formatTime(duration) : formatTime(watchedSeconds)} / {formatTime(duration)}
+                  {(isAlreadyCompleted || isCompleted) ? formatTime(duration) : formatTime(actualSecondsWatched)} / {formatTime(duration)}
                 </span>
               </div>
               <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-3 overflow-hidden border border-slate-200 dark:border-slate-700 relative">
@@ -787,6 +886,9 @@ export default function VideoPlayerView({ video, setTab }: { video: any, setTab:
                    style={{ width: `${(isAlreadyCompleted || isCompleted) ? 100 : progressPercentage}%` }}
                  />
               </div>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold leading-snug">
+                ⚠️ skipping forward does not count toward progress. You must actively study the lesson sequentially to complete it!
+              </p>
             </div>
           )}
 

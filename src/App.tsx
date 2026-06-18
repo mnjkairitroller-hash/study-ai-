@@ -47,7 +47,7 @@ function MainApp() {
         {currentTab === 'achievements' && <AchievementsView />}
         {currentTab === 'profile' && <ProfileView />}
         {currentTab === 'player' && playingVideo && (
-          <VideoPlayerView video={playingVideo} setTab={setCurrentTab} />
+          <VideoPlayerView video={playingVideo} setTab={setCurrentTab} hasActiveChapter={!!selectedChapter} />
         )}
       </main>
 
