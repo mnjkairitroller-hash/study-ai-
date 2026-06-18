@@ -1,0 +1,33 @@
+// Blueprint for Firestore database
+{
+  "collections": [
+    {
+      "name": "users",
+      "documentId": "{userId}",
+      "rules": ["read", "write"],
+      "schema": {
+        "points": "number",
+        "level": "number",
+        "streak": "number",
+        "lastActive": "string",
+        "theme": "string",
+        "rewards": "array",
+        "completedLessons": "array",
+        "createdAt": "timestamp"
+      }
+    },
+    {
+      "name": "chapters",
+      "documentId": "{chapterId}",
+      "rules": ["read", "write"],
+      "schema": {
+        "title": "string",
+        "subject": "string",
+        "classLevel": "string",
+        "videoUrl": "string",
+        "createdAt": "timestamp",
+        "createdBy": "string"
+      }
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+body {
+  @apply transition-colors duration-300;
+}
+
+/* Default to Slate if no theme applied */
+body:not([class*="theme-"]) {
+  @apply bg-slate-900 text-slate-50;
+}
+
+/* SLATE THEME (Classic Dark) */
+body.theme-slate {
+  @apply bg-slate-900 text-slate-50;
+}
+body.theme-slate .app-card, body.theme-slate .app-nav {
+  @apply bg-slate-800/80 border border-slate-700;
+}
+body.theme-slate .app-btn-primary {
+  @apply bg-blue-600 text-white hover:bg-blue-500;
+}
+body.theme-slate .app-text-muted {
+  @apply text-slate-400;
+}
+
+/* SAKURA THEME (Cherry Blossom Pink) */
+body.theme-sakura {
+  @apply bg-pink-50 text-pink-950;
+}
+body.theme-sakura .app-card, body.theme-sakura .app-nav {
+  @apply bg-white border border-pink-200 shadow-sm shadow-pink-100;
+}
+body.theme-sakura .app-btn-primary {
+  @apply bg-pink-500 text-white hover:bg-pink-600;
+}
+body.theme-sakura .app-text-muted {
+  @apply text-pink-600/70;
+}
+
+/* EMERALD THEME (Diamond Green) */
+body.theme-emerald {
+  @apply bg-emerald-50 text-emerald-950;
+}
+body.theme-emerald .app-card, body.theme-emerald .app-nav {
+  @apply bg-white border border-emerald-200 shadow-sm shadow-emerald-100;
+}
+body.theme-emerald .app-btn-primary {
+  @apply bg-emerald-600 text-white hover:bg-emerald-700;
+}
+body.theme-emerald .app-text-muted {
+  @apply text-emerald-700/70;
+}
+
+/* SUNSET THEME (Orange Evening) */
+body.theme-sunset {
+  @apply bg-amber-50 text-amber-950;
+}
+body.theme-sunset .app-card, body.theme-sunset .app-nav {
+  @apply bg-amber-100/50 border border-amber-200;
+}
+body.theme-sunset .app-btn-primary {
+  @apply bg-orange-500 text-white hover:bg-orange-600;
+}
+body.theme-sunset .app-text-muted {
+  @apply text-amber-700/70;
+}
+
+/* CYBERPUNK THEME (Neon Future) */
+body.theme-cyberpunk {
+  @apply bg-zinc-950 text-zinc-100;
+}
+body.theme-cyberpunk .app-card, body.theme-cyberpunk .app-nav {
+  @apply bg-zinc-900 border-2 border-yellow-500/30 shadow-[0_0_15px_rgba(234,179,8,0.1)];
+}
+body.theme-cyberpunk .app-btn-primary {
+  @apply bg-yellow-400 text-black font-bold hover:bg-yellow-300 shadow-[0_0_10px_rgba(250,204,21,0.5)];
+}
+body.theme-cyberpunk .app-text-muted {
+  @apply text-zinc-400;
+}
