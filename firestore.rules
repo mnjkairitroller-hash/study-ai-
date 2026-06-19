@@ -1,13 +1,38 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
+    match /{document=**} {
+      allow read, write: if false;
     }
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Helper functions for data types and required fields
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    
+    // User validation blueprint
+    function isValidUser(data) {
+      return data.keys().hasAny(['displayName', 'points', 'level']) &&
+             (data.points is number) &&
+             (data.level is number) &&
+             (data.streak is number || !('streak' in data));
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId);
+    }
+    
     match /chapters/{chapterId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
     }
   }
 }

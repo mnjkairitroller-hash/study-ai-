@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../lib/firebase';
 import { doc, onSnapshot, updateDoc, arrayUnion, deleteDoc } from 'firebase/firestore';
-import { ArrowLeft, PlayCircle, Plus, Trash2, Youtube, ListVideo, Lock } from 'lucide-react';
+import { ArrowLeft, PlayCircle, Plus, Trash2, Youtube, ListVideo, Lock, MoreVertical, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAppContext } from '../store';
+import { getChapterCoverImage } from '../lib/utils';
 
 function extractYtId(url: string) {
   if (!url) return '';
@@ -12,7 +13,7 @@ function extractYtId(url: string) {
 }
 
 export default function ChapterDetailsView({ chapter, setTab, setPlayingVideo }: { chapter: any, setTab: (t: string) => void, setPlayingVideo: (v: any) => void }) {
-  const { userData } = useAppContext();
+  const { userData, markLessonComplete } = useAppContext();
   const [chapterData, setChapterData] = useState<any>(chapter);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newUrl, setNewUrl] = useState('');
@@ -22,6 +23,117 @@ export default function ChapterDetailsView({ chapter, setTab, setPlayingVideo }:
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deletePin, setDeletePinAttempt] = useState('');
   const [deleteError, setDeleteError] = useState('');
+
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingVideo, setEditingVideo] = useState<any>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editUrl, setEditUrl] = useState('');
+  const [editPin, setEditPin] = useState('');
+  const [editError, setEditError] = useState('');
+  const [editLoading, setEditLoading] = useState(false);
+
+  // Manual completion override states
+  const [completeVideoWithPin, setCompleteVideoWithPin] = useState<any>(null);
+  const [completePin, setCompletePin] = useState('');
+  const [completeError, setCompleteError] = useState('');
+  const [completeLoading, setCompleteLoading] = useState(false);
+
+  const [pathCoords, setPathCoords] = useState<{ x: number; y: number }[]>([]);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 640);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  const updatePathCoords = () => {
+    if (!containerRef.current || !chapterData?.videos) return;
+    const parentRect = containerRef.current.getBoundingClientRect();
+    const coords: { x: number; y: number }[] = [];
+    
+    chapterData.videos.forEach((video: any) => {
+      const el = document.getElementById(`video-part-${video.id}`);
+      if (el) {
+        const elRect = el.getBoundingClientRect();
+        const x = (elRect.left - parentRect.left) + elRect.width / 2;
+        const y = (elRect.top - parentRect.top) + elRect.height / 2;
+        coords.push({ x, y });
+      }
+    });
+    setPathCoords(coords);
+  };
+
+  const getSvgPathString = () => {
+    if (pathCoords.length === 0) return "";
+    let d = `M ${pathCoords[0].x} ${pathCoords[0].y}`;
+    
+    for (let i = 0; i < pathCoords.length - 1; i++) {
+      const p1 = pathCoords[i];
+      const p2 = pathCoords[i + 1];
+      
+      if (isMobile) {
+        // Smooth vertical waving curve on mobile stack
+        const cp1_x = p1.x + (i % 2 === 0 ? 30 : -30);
+        const cp1_y = p1.y + (p2.y - p1.y) * 0.45;
+        const cp2_x = p2.x + (i % 2 === 0 ? -30 : 30);
+        const cp2_y = p1.y + (p2.y - p1.y) * 0.55;
+        d += ` C ${cp1_x} ${cp1_y}, ${cp2_x} ${cp2_y}, ${p2.x} ${p2.y}`;
+      } else {
+        const isSameRow = Math.abs(p1.y - p2.y) < 55;
+        
+        if (isSameRow) {
+          // Connect horizontally with a smooth wave (tedha line!)
+          const cp1_x = p1.x + (p2.x - p1.x) * 0.45;
+          const cp1_y = p1.y + (i % 2 === 0 ? 12 : -12);
+          const cp2_x = p1.x + (p2.x - p1.x) * 0.55;
+          const cp2_y = p2.y + (i % 2 === 0 ? -12 : 12);
+          d += ` C ${cp1_x} ${cp1_y}, ${cp2_x} ${cp2_y}, ${p2.x} ${p2.y}`;
+        } else {
+          // Moving to next row: sweep outwards to create a connection loop
+          if (p1.x > 380) {
+            // Right edge loop
+            const cp1_x = p1.x + 100;
+            const cp1_y = p1.y + 20;
+            const cp2_x = p2.x + 100;
+            const cp2_y = p2.y - 20;
+            d += ` C ${cp1_x} ${cp1_y}, ${cp2_x} ${cp2_y}, ${p2.x} ${p2.y}`;
+          } else {
+            // Left edge loop
+            const cp1_x = p1.x - 100;
+            const cp1_y = p1.y + 20;
+            const cp2_x = p2.x - 100;
+            const cp2_y = p2.y - 20;
+            d += ` C ${cp1_x} ${cp1_y}, ${cp2_x} ${cp2_y}, ${p2.x} ${p2.y}`;
+          }
+        }
+      }
+    }
+    return d;
+  };
+
+  useEffect(() => {
+    if (chapterData?.videos?.length > 0) {
+      const timer = setTimeout(() => {
+        updatePathCoords();
+      }, 180);
+
+      window.addEventListener('resize', updatePathCoords);
+      // Also observe container mutations or scroll changes
+      const observer = new ResizeObserver(() => {
+        updatePathCoords();
+      });
+      if (containerRef.current) observer.observe(containerRef.current);
+
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener('resize', updatePathCoords);
+        observer.disconnect();
+      };
+    }
+  }, [chapterData?.videos]);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'chapters', chapter.id), (docS) => {
@@ -79,6 +191,110 @@ export default function ChapterDetailsView({ chapter, setTab, setPlayingVideo }:
     }
   };
 
+  const handleOpenEditModal = (video: any) => {
+    setEditingVideo(video);
+    setEditTitle(video.title);
+    setEditUrl(video.videoUrl);
+    setEditPin('');
+    setEditError('');
+    setEditLoading(false);
+    setIsEditOpen(true);
+  };
+
+  const handleUpdateVideo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEditError('');
+    if (!editTitle.trim() || !editUrl.trim()) {
+      setEditError('Please fill in all fields.');
+      return;
+    }
+    if (!userData?.deletePin) {
+      setEditError("PIN is not set in Profile settings.");
+      return;
+    }
+    if (editPin !== userData.deletePin) {
+      setEditError("Incorrect PIN.");
+      return;
+    }
+
+    setEditLoading(true);
+    try {
+      const updatedVideos = (chapterData.videos || []).map((v: any) => {
+        if (v.id === editingVideo.id) {
+          return { ...v, title: editTitle, videoUrl: editUrl };
+        }
+        return v;
+      });
+
+      await updateDoc(doc(db, 'chapters', chapter.id), {
+        videos: updatedVideos
+      });
+      setIsEditOpen(false);
+      setEditingVideo(null);
+    } catch (err) {
+      console.error(err);
+      setEditError("Failed to update video.");
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleDeleteVideo = async () => {
+    setEditError('');
+    if (!userData?.deletePin) {
+      setEditError("PIN is not set in Profile settings.");
+      return;
+    }
+    if (editPin !== userData.deletePin) {
+      setEditError("Incorrect PIN.");
+      return;
+    }
+
+    setEditLoading(true);
+    try {
+      const updatedVideos = (chapterData.videos || []).filter((v: any) => v.id !== editingVideo.id);
+
+      await updateDoc(doc(db, 'chapters', chapter.id), {
+        videos: updatedVideos
+      });
+      setIsEditOpen(false);
+      setEditingVideo(null);
+    } catch (err) {
+      console.error(err);
+      setEditError("Failed to delete video.");
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleConfirmManualComplete = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCompleteError('');
+    
+    if (!completeVideoWithPin) return;
+
+    if (!userData?.deletePin) {
+      setCompleteError("Teacher PIN is not set in Profile settings.");
+      return;
+    }
+    if (completePin !== userData.deletePin) {
+      setCompleteError("Incorrect PIN.");
+      return;
+    }
+
+    setCompleteLoading(true);
+    try {
+      await markLessonComplete(completeVideoWithPin.id, 50);
+      setCompleteVideoWithPin(null);
+      setCompletePin('');
+    } catch (err) {
+      console.error(err);
+      setCompleteError("Failed to update video completion status.");
+    } finally {
+      setCompleteLoading(false);
+    }
+  };
+
   const playVideo = (video: any) => {
     // Pass video into player with a reference back to chapter title
     setPlayingVideo({
@@ -117,6 +333,20 @@ export default function ChapterDetailsView({ chapter, setTab, setPlayingVideo }:
       </div>
 
       <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 pb-32">
+        {/* Chapter Cover Hero Card */}
+        <div className="w-full h-44 md:h-56 rounded-3xl overflow-hidden relative mb-8 shadow-md border border-slate-200/50 dark:border-slate-800/80">
+          <img 
+            src={chapterData.coverImage || getChapterCoverImage(chapterData.subject, chapterData.title)} 
+            alt={chapterData.title} 
+            className="w-full h-full object-cover"
+            referrerPolicy="no-referrer"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/40 to-transparent flex flex-col justify-end p-5 md:p-6">
+            <span className="text-xs font-black uppercase tracking-wider text-indigo-400 mb-1">{chapterData.subject} • {chapterData.classLevel || 'Class 10'}</span>
+            <h2 className="text-xl md:text-2xl font-extrabold text-white tracking-tight drop-shadow-sm">{chapterData.title}</h2>
+          </div>
+        </div>
+
         {/* Videos List */}
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800 dark:text-white">
@@ -138,82 +368,174 @@ export default function ChapterDetailsView({ chapter, setTab, setPlayingVideo }:
                <p className="font-medium text-slate-500 dark:text-slate-400">No videos in this chapter yet.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {chapterData.videos.map((video: any, index: number) => {
-                const isCompleted = userData?.completedLessons?.includes(video.id);
-                
-                return (
-                  <motion.div 
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    key={video.id} 
-                    onClick={() => playVideo(video)}
-                    className={`bg-white dark:bg-slate-900 rounded-3xl p-3 border transition-all cursor-pointer flex items-center gap-4 ${isCompleted ? 'border-emerald-200 dark:border-emerald-900/50 shadow-sm' : 'border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-md'}`}
-                  >
-                    <div className="relative w-32 h-24 bg-slate-800 rounded-2xl overflow-hidden shrink-0 shadow-inner">
-                      <img src={`https://img.youtube.com/vi/${extractYtId(video.videoUrl)}/mqdefault.jpg`} className={`w-full h-full object-cover transition-all duration-500 ${isCompleted ? 'opacity-90' : 'opacity-80 group-hover:opacity-100 group-hover:scale-110'}`} alt="Thumbnail" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                         <PlayCircle size={32} className={`text-white drop-shadow-lg ${isCompleted ? 'opacity-0' : 'opacity-100'}`} fill="rgba(0,0,0,0.4)" strokeWidth={1.5} />
-                      </div>
-                      <div className="absolute bottom-2 left-2 bg-white/20 backdrop-blur-md px-2 py-0.5 rounded-lg text-[10px] font-bold text-white tracking-wide border border-white/20">
-                        PART {index + 1}
-                      </div>
-                    </div>
-                    
-                    <div className="flex-1 min-w-0 py-1">
-                      <h3 className={`font-bold text-[1.05rem] leading-snug line-clamp-2 transition-colors mb-2 ${isCompleted ? 'text-slate-500 dark:text-slate-400' : 'text-slate-800 dark:text-white'}`}>
-                        {video.title}
-                      </h3>
-                      {isCompleted ? (
-                        <div className="text-xs font-bold text-emerald-500 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                          Completed
-                        </div>
-                      ) : userData?.lessonProgress?.[video.id] ? (
-                        <div className="text-xs font-bold text-amber-500 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                          Resume
-                        </div>
-                      ) : (
-                        <div className="text-xs font-bold text-indigo-500 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
-                          Up Next
-                        </div>
-                      )}
-                    </div>
+            <div ref={containerRef} className="relative py-8 px-4 sm:px-6 bg-slate-50/50 dark:bg-slate-950/20 rounded-3xl border border-slate-200/60 dark:border-slate-800/50 overflow-hidden min-h-[300px]">
+              {/* Dynamic Wavy Connecting Pathway SVG */}
+              {pathCoords.length > 0 && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none z-0 overflow-visible">
+                   <defs>
+                     <linearGradient id="video-grad-serpentine" x1="0%" y1="0%" x2="100%" y2="100%">
+                       <stop offset="0%" stopColor="#6366f1" />
+                       <stop offset="50%" stopColor="#10b981" />
+                       <stop offset="100%" stopColor="#f59e0b" />
+                     </linearGradient>
+                     <filter id="video-glow-serpentine">
+                       <feGaussianBlur stdDeviation="3" result="blur"/>
+                       <feMerge>
+                         <feMergeNode in="blur"/>
+                         <feMergeNode in="SourceGraphic"/>
+                       </feMerge>
+                     </filter>
+                   </defs>
+                   
+                   {/* Background track line */}
+                   <path
+                     d={getSvgPathString()}
+                     fill="none"
+                     stroke="currentColor"
+                     className="text-slate-200 dark:text-slate-800"
+                     strokeWidth="5"
+                     strokeLinecap="round"
+                     strokeDasharray="8 8"
+                   />
+                   
+                   {/* Glowing progress line */}
+                   <path
+                     d={getSvgPathString()}
+                     fill="none"
+                     stroke="url(#video-grad-serpentine)"
+                     strokeWidth="4.5"
+                     strokeLinecap="round"
+                     filter="url(#video-glow-serpentine)"
+                     className="opacity-90"
+                   />
+                </svg>
+              )}
 
-                    <div className="pr-3 pl-1 flex items-center justify-center">
-                      {/* Circular Progress Indicator */}
-                      <div className="relative w-12 h-12 flex items-center justify-center">
-                        {isCompleted ? (
-                          <>
-                             <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                                <circle cx="18" cy="18" r="16" fill="none" className="stroke-emerald-100 dark:stroke-emerald-900/30" strokeWidth="4"></circle>
-                                <circle cx="18" cy="18" r="16" fill="none" className="stroke-emerald-500" strokeWidth="4" strokeDasharray="100 100" strokeDashoffset="0"></circle>
-                             </svg>
-                             <div className="absolute inset-0 flex items-center justify-center text-emerald-500">
-                               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                             </div>
-                          </>
-                        ) : (
-                          <>
-                             <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                                <circle cx="18" cy="18" r="16" fill="none" className="stroke-slate-200 dark:stroke-slate-800" strokeWidth="4"></circle>
-                                {userData?.lessonProgress?.[video.id] && (
-                                  <circle cx="18" cy="18" r="16" fill="none" className="stroke-amber-500" strokeWidth="4" strokeDasharray="100 100" strokeDashoffset="50"></circle>
-                                )}
-                             </svg>
-                             <div className={`absolute inset-0 flex items-center justify-center ${userData?.lessonProgress?.[video.id] ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'}`}>
-                               <PlayCircle size={18} strokeWidth={2.5} />
-                             </div>
-                          </>
+              {/* Grid Layout conforming to Serpentine logic */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 sm:gap-x-6 gap-y-7 relative z-10 max-w-4xl mx-auto">
+                {(() => {
+                  const itemsPerRow = 3;
+                  return chapterData.videos.map((video: any, index: number) => {
+                    const isCompleted = userData?.completedLessons?.includes(video.id);
+                    const rowIndex = Math.floor(index / itemsPerRow);
+                    const isRowReversed = rowIndex % 2 === 1;
+                    const colIndex = isRowReversed ? (2 - (index % itemsPerRow)) : (index % itemsPerRow);
+
+                    return (
+                      <motion.div 
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        key={video.id} 
+                        id={`video-part-${video.id}`}
+                        onClick={() => playVideo(video)}
+                        style={{
+                          gridRow: isMobile ? 'auto' : `${rowIndex + 1}`,
+                          gridColumnStart: isMobile ? 'auto' : `${colIndex + 1}`,
+                        }}
+                         className={`bg-white dark:bg-slate-900 rounded-xl p-2 ${isCompleted ? 'pr-7' : 'pr-13'} border transition-all cursor-pointer flex items-center gap-2 relative w-full max-w-[320px] mx-auto shadow-sm ${
+                          isCompleted 
+                            ? 'border-emerald-200 dark:border-emerald-950/40 bg-emerald-50/5 dark:bg-emerald-950/5' 
+                            : 'border-slate-200/95 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-md'
+                        }`}
+                      >
+                        {!isCompleted && (
+                          <button
+                            id={`manual-complete-btn-${video.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCompleteVideoWithPin(video);
+                              setCompletePin('');
+                              setCompleteError('');
+                              setCompleteLoading(false);
+                            }}
+                            title="Mark completed"
+                            className="absolute top-1.5 right-7.5 w-6 h-6 rounded-full text-slate-400 dark:text-slate-500 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 flex items-center justify-center transition-colors z-20 border border-slate-100 dark:border-slate-800/80"
+                          >
+                            <Check size={12} strokeWidth={3} />
+                          </button>
                         )}
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
+
+                        <button
+                          id={`edit-video-btn-${video.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenEditModal(video);
+                          }}
+                          className="absolute top-1.5 right-1 w-6 h-6 rounded-full text-slate-400 hover:text-indigo-500 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center transition-colors z-20"
+                        >
+                          <MoreVertical size={14} />
+                        </button>
+
+                        <div className="relative aspect-video w-[6rem] sm:w-[6.8rem] bg-slate-800 rounded-lg overflow-hidden shrink-0 shadow-inner">
+                          <img 
+                            src={`https://img.youtube.com/vi/${extractYtId(video.videoUrl)}/hqdefault.jpg`} 
+                            className={`w-full h-full object-cover transition-all duration-500 ${isCompleted ? 'opacity-90' : 'opacity-80 group-hover:opacity-100 group-hover:scale-105'}`} 
+                            alt="Thumbnail" 
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                              <PlayCircle size={22} className={`text-white drop-shadow-lg ${isCompleted ? 'opacity-0' : 'opacity-100'}`} fill="rgba(0,0,0,0.4)" strokeWidth={1.5} />
+                          </div>
+                          <div className="absolute bottom-1 right-1 bg-black/75 backdrop-blur-sm px-1 py-0.5 rounded text-[8px] font-black tracking-wider text-white border border-white/10 uppercase">
+                            PART {index + 1}
+                          </div>
+                        </div>
+                        
+                        <div className="flex-1 min-w-0 py-0.5">
+                          <h3 className={`font-bold text-[0.88rem] leading-snug line-clamp-2 transition-colors mb-1 ${isCompleted ? 'text-slate-500 dark:text-slate-400' : 'text-slate-800 dark:text-white'}`}>
+                            {video.title}
+                          </h3>
+                          {isCompleted ? (
+                            <div className="text-xs font-bold text-emerald-500 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              Completed
+                            </div>
+                          ) : userData?.lessonProgress?.[video.id] ? (
+                            <div className="text-xs font-bold text-amber-500 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                              Resume
+                            </div>
+                          ) : (
+                            <div className="text-xs font-bold text-indigo-500 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                              Up Next
+                            </div>
+                          )}
+                        </div>
+ 
+                        <div className="pr-1 flex items-center justify-center shrink-0">
+                          {/* Circular Progress Indicator */}
+                          <div className="relative w-8 h-8 flex items-center justify-center">
+                            {isCompleted ? (
+                              <>
+                                 <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                                    <circle cx="18" cy="18" r="16" fill="none" className="stroke-emerald-100 dark:stroke-emerald-900/30" strokeWidth="4.5"></circle>
+                                    <circle cx="18" cy="18" r="16" fill="none" className="stroke-emerald-500" strokeWidth="4.5" strokeDasharray="100 100" strokeDashoffset="0"></circle>
+                                 </svg>
+                                 <div className="absolute inset-0 flex items-center justify-center text-emerald-500">
+                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                 </div>
+                              </>
+                            ) : (
+                              <>
+                                 <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                                    <circle cx="18" cy="18" r="16" fill="none" className="stroke-slate-200 dark:stroke-slate-800" strokeWidth="4"></circle>
+                                    {userData?.lessonProgress?.[video.id] && (
+                                      <circle cx="18" cy="18" r="16" fill="none" className="stroke-amber-500" strokeWidth="4" strokeDasharray="100 100" strokeDashoffset="50"></circle>
+                                    )}
+                                 </svg>
+                                 <div className={`absolute inset-0 flex items-center justify-center ${userData?.lessonProgress?.[video.id] ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'}`}>
+                                   <PlayCircle size={13} strokeWidth={2.5} />
+                                 </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  });
+                })()}
+              </div>
             </div>
           )}
         </div>
@@ -274,6 +596,92 @@ export default function ChapterDetailsView({ chapter, setTab, setPlayingVideo }:
           </div>
         )}
 
+        {/* Edit Video Modal */}
+        {isEditOpen && editingVideo && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 sm:p-0">
+            <motion.div 
+              initial={{ opacity: 0 }} { ...({ animate: { opacity: 1 }, exit: { opacity: 0 } } as any) }
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setIsEditOpen(false)}
+            />
+            <motion.div 
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-t-3xl sm:rounded-3xl p-6 relative shadow-2xl z-10 bottom-0 pb-safe border border-slate-100 dark:border-slate-800"
+            >
+              <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto mb-6 sm:hidden"></div>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-slate-800 dark:text-white">Edit Video Card</h2>
+                <button 
+                  type="button"
+                  onClick={handleDeleteVideo}
+                  disabled={editLoading}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold text-red-500 bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-900/40 transition-colors flex items-center gap-1"
+                >
+                  <Trash2 size={12} />
+                  Delete Card
+                </button>
+              </div>
+              
+              <form onSubmit={handleUpdateVideo} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold mb-1 text-slate-600 dark:text-slate-400">YouTube URL</label>
+                  <div className="relative">
+                    <Youtube className="absolute left-3 top-3 text-red-500" size={20} />
+                    <input
+                      type="url"
+                      value={editUrl}
+                      onChange={(e) => setEditUrl(e.target.value)}
+                      required
+                      placeholder="https://youtu.be/..."
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold mb-1 text-slate-600 dark:text-slate-400">Part Title</label>
+                  <input
+                    type="text"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    required
+                    placeholder="e.g. Introduction"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800/85">
+                  <label className="block text-xs font-black text-rose-500 dark:text-rose-400 mb-1 flex items-center gap-1">
+                    <Lock size={12} /> ENTER PROFILE PASSWORD / PIN (6 DIGITS) TO UPDATE OR DELETE
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-3 text-slate-400" size={18} />
+                    <input
+                      type="password"
+                      maxLength={6}
+                      value={editPin}
+                      onChange={(e) => setEditPin(e.target.value.replace(/\D/g, ''))}
+                      required
+                      placeholder="••••••"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-rose-500 text-sm font-bold font-mono tracking-widest text-lg"
+                    />
+                  </div>
+                  {editError && <p className="text-red-500 text-xs mt-2 font-bold text-center">{editError}</p>}
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button type="button" onClick={() => setIsEditOpen(false)} className="flex-1 py-3 font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700">Cancel</button>
+                  <button type="submit" disabled={editLoading} className="flex-1 py-3 font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 disabled:opacity-70">
+                    {editLoading ? 'Updating...' : 'Update Card'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+
         {/* Delete Chapter Modal */}
         {isDeleteOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -301,10 +709,11 @@ export default function ChapterDetailsView({ chapter, setTab, setPlayingVideo }:
                   <Lock className="absolute left-3 top-3 text-slate-400" size={20} />
                   <input
                     type="password"
+                    maxLength={6}
                     value={deletePin}
-                    onChange={(e) => setDeletePinAttempt(e.target.value)}
-                    placeholder="Enter Delete PIN"
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-red-500"
+                    onChange={(e) => setDeletePinAttempt(e.target.value.replace(/\D/g, ''))}
+                    placeholder="••••••"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-red-500 font-mono tracking-widest text-lg"
                   />
                 </div>
                 {deleteError && <p className="text-red-500 text-xs mt-2 font-bold text-center">{deleteError}</p>}
@@ -312,8 +721,85 @@ export default function ChapterDetailsView({ chapter, setTab, setPlayingVideo }:
 
               <div className="flex gap-3">
                  <button onClick={() => setIsDeleteOpen(false)} className="flex-1 py-3 font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700">Cancel</button>
-                 <button onClick={handleDeleteChapter} className="flex-1 py-3 font-bold text-white bg-red-500 rounded-xl hover:bg-red-600">Yes, Delete</button>
+                 <button 
+                   onClick={handleDeleteChapter} 
+                   disabled={deletePin.length !== 6}
+                   className="flex-1 py-3 font-bold text-white bg-red-500 rounded-xl hover:bg-red-600 disabled:opacity-50"
+                 >
+                   Yes, Delete
+                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Manual Complete Modal */}
+        {completeVideoWithPin && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 sm:p-0">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setCompleteVideoWithPin(null)}
+            />
+            <motion.div 
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-t-3xl sm:rounded-3xl p-6 relative shadow-2xl z-10 bottom-0 pb-safe border border-slate-100 dark:border-slate-800"
+            >
+              <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto mb-6 sm:hidden"></div>
+              <h2 className="text-xl font-black mb-2 text-slate-800 dark:text-white flex items-center gap-2">
+                <Check className="text-emerald-500" size={24} strokeWidth={3} />
+                Mark as Completed?
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed text-left">
+                Manually bypass execution metrics for "<strong className="text-slate-700 dark:text-slate-200 font-bold">{completeVideoWithPin.title}</strong>". Please enter the Teacher PIN to authorize.
+              </p>
+
+              <form onSubmit={handleConfirmManualComplete} className="space-y-4 text-left">
+                <div className="space-y-1">
+                  <label className="block text-xs font-black text-rose-500 dark:text-rose-400 mb-1 flex items-center gap-1">
+                    <Lock size={12} /> ENTER PROFILE PASSWORD / PIN (6 DIGITS)
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-3 text-slate-400" size={18} />
+                    <input
+                      type="password"
+                      maxLength={6}
+                      value={completePin}
+                      onChange={(e) => {
+                        setCompleteError('');
+                        setCompletePin(e.target.value.replace(/\D/g, ''));
+                      }}
+                      required
+                      placeholder="••••••"
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold font-mono tracking-widest text-lg"
+                      autoFocus
+                    />
+                  </div>
+                  {completeError && <p className="text-red-500 text-xs mt-2 font-bold text-center">{completeError}</p>}
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button 
+                    type="button" 
+                    onClick={() => setCompleteVideoWithPin(null)} 
+                    className="flex-1 py-3 font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    disabled={completeLoading || completePin.length !== 6} 
+                    className="flex-1 py-3 font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    {completeLoading ? 'Updating...' : 'Confirm'}
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}

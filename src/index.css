@@ -78,3 +78,73 @@ body.theme-cyberpunk .app-btn-primary {
 body.theme-cyberpunk .app-text-muted {
   @apply text-zinc-400;
 }
+
+/* LAVENDER THEME (Dreamy Violet) */
+body.theme-lavender {
+  @apply bg-violet-50 text-violet-950;
+}
+body.theme-lavender .app-card, body.theme-lavender .app-nav {
+  @apply bg-white border border-violet-200 shadow-sm shadow-violet-100;
+}
+body.theme-lavender .app-btn-primary {
+  @apply bg-violet-600 text-white hover:bg-violet-700 shadow shadow-violet-200;
+}
+body.theme-lavender .app-text-muted {
+  @apply text-violet-700/70;
+}
+
+/* HONEY THEME (Cozy Sweet Caramel) */
+body.theme-honey {
+  @apply bg-amber-50/70 text-amber-950;
+}
+body.theme-honey .app-card, body.theme-honey .app-nav {
+  @apply bg-white border border-amber-200/80 shadow-sm shadow-amber-100;
+}
+body.theme-honey .app-btn-primary {
+  @apply bg-amber-500 text-amber-950 font-bold hover:bg-amber-600 shadow shadow-amber-200;
+}
+body.theme-honey .app-text-muted {
+  @apply text-amber-700/80;
+}
+
+/* OCEAN THEME (Crisp Mint Teal) */
+body.theme-ocean {
+  @apply bg-teal-50 text-teal-950;
+}
+body.theme-ocean .app-card, body.theme-ocean .app-nav {
+  @apply bg-white border border-teal-200 shadow-sm shadow-teal-100;
+}
+body.theme-ocean .app-btn-primary {
+  @apply bg-teal-600 text-white hover:bg-teal-700 shadow shadow-teal-200;
+}
+body.theme-ocean .app-text-muted {
+  @apply text-teal-700/70;
+}
+
+/* PEACH THEME (Sweet Apricot Cream) */
+body.theme-peach {
+  @apply bg-orange-50/60 text-orange-950;
+}
+body.theme-peach .app-card, body.theme-peach .app-nav {
+  @apply bg-white border border-orange-200/80 shadow-sm shadow-orange-100;
+}
+body.theme-peach .app-btn-primary {
+  @apply bg-orange-500 text-white hover:bg-orange-600 shadow shadow-orange-200;
+}
+body.theme-peach .app-text-muted {
+  @apply text-orange-800/70;
+}
+
+/* NEBULA THEME (Cozy Dark Galaxy Dream) */
+body.theme-nebula {
+  @apply bg-indigo-950 text-indigo-100;
+}
+body.theme-nebula .app-card, body.theme-nebula .app-nav {
+  @apply bg-slate-900 border border-purple-800 shadow-sm shadow-indigo-950;
+}
+body.theme-nebula .app-btn-primary {
+  @apply bg-purple-600 text-white hover:bg-purple-500 shadow shadow-purple-900;
+}
+body.theme-nebula .app-text-muted {
+  @apply text-purple-300;
+}

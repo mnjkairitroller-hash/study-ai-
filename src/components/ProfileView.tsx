@@ -1,13 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../store';
-import { auth } from '../lib/firebase';
-import { LogOut, Palette, Ticket, Shield, Lock } from 'lucide-react';
+import { auth, db } from '../lib/firebase';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { LogOut, Palette, Ticket, Shield, Lock, Calendar, CheckCircle2, Clock3, AlertTriangle, Sparkles, PlayCircle, Star, GraduationCap } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 
 export default function ProfileView() {
   const { userData, user, setTheme, setDeletePin } = useAppContext();
+  const [currentPinInput, setCurrentPinInput] = useState('');
   const [pinInput, setPinInput] = useState('');
   const [pinSaved, setPinSaved] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [chapters, setChapters] = useState<any[]>([]);
+  const [activeDayTab, setActiveDayTab] = useState<'today' | 'tomorrow' | 'dayAfter'>('today');
 
   const themes = [
     { id: 'slate', name: 'Classic Slate', color: 'bg-slate-900 border-slate-700' },
@@ -15,29 +20,380 @@ export default function ProfileView() {
     { id: 'emerald', name: 'Emerald', color: 'bg-emerald-100 border-emerald-300' },
     { id: 'sunset', name: 'Sunset', color: 'bg-orange-100 border-orange-300' },
     { id: 'cyberpunk', name: 'Cyberpunk', color: 'bg-zinc-900 border-yellow-500' },
+    { id: 'lavender', name: 'Sweet Lavender', color: 'bg-violet-100 border-violet-300' },
+    { id: 'honey', name: 'Cozy Honey', color: 'bg-amber-100 border-amber-300' },
+    { id: 'ocean', name: 'Minty Ocean', color: 'bg-teal-100 border-teal-300' },
+    { id: 'peach', name: 'Sweet Peach', color: 'bg-orange-100 border-orange-200' },
+    { id: 'nebula', name: 'Cosmic Dream', color: 'bg-indigo-950 border-purple-500' },
   ];
+
+  // Subscribe to all chapters so we have real subjects, topics, and video parts
+  useEffect(() => {
+    const q = query(collection(db, 'chapters'), orderBy('createdAt', 'asc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setChapters(list);
+    }, (err) => {
+      console.error("Error fetching chapters for Timetable:", err);
+    });
+    return () => unsubscribe();
+  }, []);
 
   if (!userData) return null;
 
+  // Subjects styling helper
+  const getSubjectStyles = (subject: string) => {
+    const s = subject?.toLowerCase() || '';
+    if (s.includes('math')) {
+      return 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30';
+    }
+    if (s.includes('sci')) {
+      return 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30';
+    }
+    if (s.includes('eng')) {
+      return 'bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400 border border-violet-100 dark:border-violet-900/30';
+    }
+    if (s.includes('comp') || s.includes('cod')) {
+      return 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/30';
+    }
+    if (s.includes('hist') || s.includes('soc')) {
+      return 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-900/30';
+    }
+    return 'bg-slate-50 dark:bg-slate-900/40 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-800/30';
+  };
+
+  // Automated 3-day scheduling generator based on all available chapter material in the database
+  const getTimelineLessons = () => {
+    if (!chapters.length) return { today: [], tomorrow: [], dayAfter: [] };
+
+    const completed = userData.completedLessons || [];
+
+    // Group chapters by subject
+    const chaptersBySubject: Record<string, any[]> = {};
+    chapters.forEach(chapter => {
+      const subject = chapter.subject || 'Other';
+      if (!chaptersBySubject[subject]) {
+        chaptersBySubject[subject] = [];
+      }
+      chaptersBySubject[subject].push(chapter);
+    });
+
+    // Sort subjects by priority
+    const sortedSubjects = Object.keys(chaptersBySubject).sort((a, b) => {
+      const priorities: Record<string, number> = { 'Math': 1, 'Science': 2, 'English': 3 };
+      const prioA = priorities[a] || 99;
+      const prioB = priorities[b] || 99;
+      if (prioA !== prioB) return prioA - prioB;
+      return a.localeCompare(b);
+    });
+
+    // For each subject, flat-map all video parts in chronological sequence (respects chronological chapter unlocked sequence)
+    const subjectQueues: Record<string, any[]> = {};
+    sortedSubjects.forEach(subject => {
+      const subjectChapters = [...chaptersBySubject[subject]].sort((a, b) => {
+        const timeA = a.createdAt?.seconds || 0;
+        const timeB = b.createdAt?.seconds || 0;
+        return timeA - timeB;
+      });
+
+      const queue: any[] = [];
+      subjectChapters.forEach(ch => {
+        if (ch.videos && ch.videos.length > 0) {
+          ch.videos.forEach((vid: any, vidIdx: number) => {
+            queue.push({
+              ...vid,
+              subject,
+              chapterTitle: ch.title,
+              chapterId: ch.id,
+              partNumber: vidIdx + 1
+            });
+          });
+        }
+      });
+      subjectQueues[subject] = queue;
+    });
+
+    // Establish Today's active learning list
+    const todayStr = new Date().toDateString();
+    let todayLessons: any[] = [];
+
+    if (userData.currentRoutine && userData.currentRoutine.date === todayStr) {
+      // Keep today's assigned videos stable based on dashboard routine
+      todayLessons = userData.currentRoutine.videos || [];
+    } else {
+      // Dynamic fallback
+      sortedSubjects.forEach(subject => {
+        const queue = subjectQueues[subject] || [];
+        const nextUncompleted = queue.find(vid => !completed.includes(vid.id));
+        if (nextUncompleted) {
+          todayLessons.push(nextUncompleted);
+        }
+      });
+    }
+
+    // Project Tomorrow's list (sequentially next videos!)
+    const tomorrowLessons: any[] = [];
+    const dayAfterLessons: any[] = [];
+
+    sortedSubjects.forEach(subject => {
+      const queue = subjectQueues[subject] || [];
+      const todayVid = todayLessons.find(v => v.subject === subject);
+
+      let todayIdx = -1;
+      if (todayVid) {
+        todayIdx = queue.findIndex(v => v.id === todayVid.id);
+      } else {
+        todayIdx = queue.findIndex(v => !completed.includes(v.id)) - 1;
+      }
+
+      // Tomorrow is next item
+      const tomorrowIdx = todayIdx + 1;
+      if (tomorrowIdx >= 0 && tomorrowIdx < queue.length) {
+        tomorrowLessons.push(queue[tomorrowIdx]);
+      }
+
+      // Day After is second next item
+      const dayAfterIdx = todayIdx + 2;
+      if (dayAfterIdx >= 0 && dayAfterIdx < queue.length) {
+        dayAfterLessons.push(queue[dayAfterIdx]);
+      }
+    });
+
+    return {
+      today: todayLessons,
+      tomorrow: tomorrowLessons,
+      dayAfter: dayAfterLessons
+    };
+  };
+
+  const timetable = getTimelineLessons();
+  const currentDaysList = 
+    activeDayTab === 'today' ? timetable.today : 
+    activeDayTab === 'tomorrow' ? timetable.tomorrow : 
+    timetable.dayAfter;
+
   const handleSavePin = () => {
-    if (pinInput.trim()) {
-      setDeletePin(pinInput.trim());
+    setErrorMessage('');
+    const newPinClean = pinInput.trim();
+
+    if (userData.deletePin) {
+      if (currentPinInput.trim() !== userData.deletePin) {
+        setErrorMessage('Incorrect current PIN ❌');
+        return;
+      }
+      if (!newPinClean) {
+        setErrorMessage('Please enter a new PIN');
+        return;
+      }
+      if (newPinClean.length !== 6 || !/^\d+$/.test(newPinClean)) {
+        setErrorMessage('New PIN must be exactly 6 digits');
+        return;
+      }
+      setDeletePin(newPinClean);
+      setCurrentPinInput('');
+      setPinInput('');
+      setPinSaved(true);
+      setTimeout(() => setPinSaved(false), 3000);
+    } else {
+      if (!newPinClean) {
+        setErrorMessage('Please enter a PIN');
+        return;
+      }
+      if (newPinClean.length !== 6 || !/^\d+$/.test(newPinClean)) {
+        setErrorMessage('PIN must be exactly 6 digits');
+        return;
+      }
+      setDeletePin(newPinClean);
       setPinInput('');
       setPinSaved(true);
       setTimeout(() => setPinSaved(false), 3000);
     }
   };
 
+  const getDayCompletedCount = (items: any[]) => {
+    const completed = userData.completedLessons || [];
+    return items.filter(v => completed.includes(v.id)).length;
+  };
+
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto pb-32 space-y-8">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto pb-32 space-y-8 text-left">
+      {/* Profile Header */}
       <div className="flex flex-col items-center mt-4">
         <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center text-white text-4xl font-bold shadow-xl mb-4 border-4 border-white/10">
           {user?.displayName?.charAt(0) || 'U'}
         </div>
-        <h2 className="text-2xl font-bold tracking-tight">{user?.displayName || 'Student'}</h2>
-        <p className="app-text-muted">{user?.email}</p>
+        <h2 className="text-2xl font-bold tracking-tight text-center">{user?.displayName || 'Student'}</h2>
+        <p className="app-text-muted text-center">{user?.email}</p>
         <div className="mt-2 text-sm font-bold bg-black/10 dark:bg-white/10 px-3 py-1 rounded-full uppercase tracking-wider">
           Level {userData.level} Explorer
+        </div>
+      </div>
+
+      {/* 📅 3-Day Personalized Dynamic Timetable */}
+      <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-6 shadow-xl space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+          <div>
+            <h3 className="font-black text-xl flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
+              <Calendar className="text-indigo-500 animate-pulse" size={24} />
+              Personalized 3-Day Timetable (3-दिन का टाइम टेबल)
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Your customized learning path for today, tomorrow, and day after tomorrow. Created dynamically based on parent/teacher uploads!
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-1.5 p-1 bg-slate-50 dark:bg-slate-950 rounded-xl self-start border border-slate-100/50 dark:border-slate-800/80">
+            <button
+              onClick={() => setActiveDayTab('today')}
+              className={`px-4 py-2 text-xs font-black rounded-lg transition-all flex items-center gap-1 ${
+                activeDayTab === 'today'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900'
+              }`}
+            >
+              Today (आज)
+              {timetable.today.length > 0 && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                  getDayCompletedCount(timetable.today) === timetable.today.length
+                    ? 'bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 font-black border border-emerald-400/20'
+                    : 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400'
+                }`}>
+                  {getDayCompletedCount(timetable.today)}/{timetable.today.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveDayTab('tomorrow')}
+              className={`px-4 py-2 text-xs font-black rounded-lg transition-all flex items-center gap-1 ${
+                activeDayTab === 'tomorrow'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900'
+              }`}
+            >
+              Tomorrow (कल)
+              {timetable.tomorrow.length > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-black bg-slate-500/20 text-slate-600 dark:text-slate-400">
+                  {timetable.tomorrow.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveDayTab('dayAfter')}
+              className={`px-4 py-2 text-xs font-black rounded-lg transition-all flex items-center gap-1 ${
+                activeDayTab === 'dayAfter'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900'
+              }`}
+            >
+              Day After (परसों)
+              {timetable.dayAfter.length > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-black bg-slate-500/20 text-slate-600 dark:text-slate-400">
+                  {timetable.dayAfter.length}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* List of lessons */}
+        {currentDaysList.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center bg-slate-50/50 dark:bg-slate-900/10 rounded-2xl border border-dashed border-slate-200 dark:border-slate-850 px-4">
+            <GraduationCap className="text-indigo-400/50 mb-3" size={48} />
+            <h4 className="font-bold text-slate-700 dark:text-slate-300">All Caught Up!</h4>
+            <p className="text-xs text-slate-500 max-w-sm mt-1 whitespace-pre-wrap leading-relaxed text-center">
+              No lessons scheduled for this day, or all materials have been fully mastered. Ask your parents/teachers to upload chapters to study! 📚
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {currentDaysList.map((video: any) => {
+              const isCompleted = userData.completedLessons?.includes(video.id);
+              const durationMin = video.duration ? Math.round(video.duration / 60) : 20;
+
+              return (
+                <div 
+                  key={video.id}
+                  className={`p-4 rounded-2xl transition-all border flex flex-col justify-between h-40 ${
+                    isCompleted 
+                      ? 'border-emerald-200 dark:border-emerald-950 bg-emerald-50/5 dark:bg-emerald-950/5 shadow-sm' 
+                      : activeDayTab === 'today'
+                        ? 'border-indigo-100/80 dark:border-indigo-950/35 bg-indigo-50/5 dark:bg-indigo-950/5 hover:border-indigo-300 dark:hover:border-indigo-800'
+                        : 'border-slate-100 dark:border-slate-800/85 hover:border-slate-350'
+                  }`}
+                >
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-start gap-1">
+                      <span className={`text-[10px] uppercase font-black px-2.5 py-1 rounded-full ${getSubjectStyles(video.subject)}`}>
+                        {video.subject}
+                      </span>
+                      {isCompleted ? (
+                        <span className="flex items-center gap-1 text-[10px] uppercase font-black px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 border border-emerald-100/50 dark:border-emerald-900/20 shadow-sm">
+                          <CheckCircle2 size={10} strokeWidth={3} className="text-emerald-500" /> MASTERED
+                        </span>
+                      ) : activeDayTab === 'today' ? (
+                        <span className="flex items-center gap-1 text-[10px] uppercase font-black px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 border border-amber-100/50 dark:border-amber-900/20">
+                          <Clock3 size={10} /> REQUIRED
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-[10px] uppercase font-black px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 border border-slate-200/50 dark:border-slate-800/20">
+                          <Lock size={10} /> UPCOMING
+                        </span>
+                      )}
+                    </div>
+
+                    <div>
+                      <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200 line-clamp-1">
+                        {video.title}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1 mt-0.5 font-medium">
+                        Chapter: {video.chapterTitle || 'Lessons'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/45">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                      <Clock3 size={12} /> {durationMin} Mins
+                    </span>
+
+                    {isCompleted ? (
+                      <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 size={13} strokeWidth={3} /> +50 XP Complete
+                      </span>
+                    ) : activeDayTab === 'today' ? (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-black uppercase text-pink-500 bg-pink-100/30 px-1.5 py-0.5 rounded">
+                          +50 XP
+                        </span>
+                        <span className="text-xs font-black text-indigo-500 flex items-center gap-1 select-none animate-pulse">
+                          Watch on Dashboard <PlayCircle size={14} />
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 flex items-center gap-1 select-none font-medium">
+                        Locks tomorrow <Lock size={11} />
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Rollover Warning notice */}
+        <div className="bg-rose-50/25 dark:bg-rose-950/10 border border-rose-505/10 rounded-2xl p-4 flex items-start gap-3">
+          <AlertTriangle className="text-rose-500 shrink-0 mt-0.5" size={18} />
+          <div className="space-y-1 text-left">
+            <h5 className="text-xs font-black text-rose-500 uppercase tracking-wide flex items-center gap-1.5">
+              Habit & Discipline Reward Policy (समय सारणी अनुशासन नियम)
+            </h5>
+            <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+              If you don't complete today's lessons today, you can still watch them tomorrow, but 
+              <strong> severe point penalties (-30 to -40 XP)</strong> will be deducted when the day rolls over! 
+              Keep your daily streak alive and complete lists on time to reach higher levels! 🚀
+            </p>
+          </div>
         </div>
       </div>
 
@@ -49,7 +405,7 @@ export default function ProfileView() {
               <Palette className="text-pink-500" />
               Theme Customization
             </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-left">
               {themes.map(t => (
                 <button
                   key={t.id}
@@ -68,34 +424,86 @@ export default function ProfileView() {
           <div className="space-y-4 bg-slate-50/50 dark:bg-slate-900/10 p-5 rounded-[2rem] border border-slate-100 dark:border-slate-800/40">
             <h3 className="font-bold text-lg flex items-center gap-2">
               <Lock className="text-indigo-500" />
-              Teacher PIN (For Deleting Chapters)
+              Teacher PIN (For Deletions)
             </h3>
-            <div className="app-card rounded-2xl p-4 border space-y-3">
-               <p className="text-sm app-text-muted">Set a PIN to prevent accidental deletion of chapters.</p>
-               <div className="flex gap-2">
-                 <input
-                    type="password"
-                    placeholder={userData.deletePin ? "••••••••" : "Enter new PIN"}
-                    value={pinInput}
-                    onChange={(e) => setPinInput(e.target.value)}
-                    className="flex-1 bg-transparent border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                 />
+            <div className="app-card rounded-2xl p-4 border space-y-4 text-left">
+               <p className="text-sm app-text-muted">Choose a 6-digit PIN to authorize deletion of chapters and subjects or to bypass video quest completions.</p>
+               
+               {userData.deletePin ? (
+                 <div className="space-y-3">
+                   <div>
+                     <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Current PIN</label>
+                     <input
+                        type="password"
+                        placeholder="••••••"
+                        maxLength={6}
+                        value={currentPinInput}
+                        onChange={(e) => {
+                          setErrorMessage('');
+                          setCurrentPinInput(e.target.value.replace(/\D/g, ''));
+                        }}
+                        className="w-full bg-slate-50 dark:bg-slate-850 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono tracking-widest text-base"
+                     />
+                   </div>
+                   <div>
+                     <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">New PIN</label>
+                     <input
+                        type="password"
+                        placeholder="••••••"
+                        maxLength={6}
+                        value={pinInput}
+                        onChange={(e) => {
+                          setErrorMessage('');
+                          setPinInput(e.target.value.replace(/\D/g, ''));
+                        }}
+                        className="w-full bg-slate-50 dark:bg-slate-850 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono tracking-widest text-base"
+                     />
+                   </div>
+                 </div>
+               ) : (
+                 <div>
+                   <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Set New PIN (6 Digits)</label>
+                   <input
+                      type="password"
+                      placeholder="••••••"
+                      maxLength={6}
+                      value={pinInput}
+                      onChange={(e) => {
+                        setErrorMessage('');
+                        setPinInput(e.target.value.replace(/\D/g, ''));
+                      }}
+                      className="w-full bg-slate-50 dark:bg-slate-850 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono tracking-widest text-base"
+                   />
+                 </div>
+               )}
+
+               <div className="pt-2">
                  <button 
                     onClick={handleSavePin}
-                    className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition"
+                    className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-bold rounded-xl transition"
                  >
-                    Save
+                    {userData.deletePin ? "Reset PIN Key" : "Save PIN Key"}
                  </button>
                </div>
-               {pinSaved && <p className="text-green-500 text-xs font-bold">PIN updated successfully.</p>}
+
+               {errorMessage && (
+                 <p className="text-red-500 text-xs font-bold text-center bg-red-50 dark:bg-red-950/20 py-2 rounded-xl border border-red-100 dark:border-red-900/40">
+                   {errorMessage}
+                 </p>
+               )}
+               {pinSaved && (
+                 <p className="text-green-500 text-xs font-bold text-center bg-green-50 dark:bg-green-950/20 py-2 rounded-xl border border-green-100 dark:border-green-900/40">
+                   PIN reset & updated successfully! 🎉
+                 </p>
+               )}
             </div>
           </div>
         </div>
 
         {/* Right Column on Desktop */}
-        <div className="space-y-6">
+        <div className="space-y-6 text-left">
           <div className="space-y-4 bg-slate-50/50 dark:bg-slate-900/10 p-5 rounded-[2rem] border border-slate-100 dark:border-slate-800/40">
-            <h3 className="font-bold text-lg flex items-center gap-2">
+            <h3 className="font-bold text-lg flex items-center gap-2 text-left">
               <Ticket className="text-yellow-500" />
               My Coupons
             </h3>

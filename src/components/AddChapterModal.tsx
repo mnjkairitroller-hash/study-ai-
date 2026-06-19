@@ -1,14 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db, auth } from '../lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { X, Book, GraduationCap, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useAppContext } from '../store';
+import { getChapterCoverImage } from '../lib/utils';
 
 export default function AddChapterModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
   const [title, setTitle] = useState('');
-  const [subject, setSubject] = useState('Math');
+  const [subject, setSubject] = useState('');
   const [classLevel, setClassLevel] = useState('Class 10');
   const [loading, setLoading] = useState(false);
+  const { userData } = useAppContext();
+  
+  const subjects = userData?.subjects || ['Math', 'Science', 'English', 'Computer', 'History'];
+
+  useEffect(() => {
+    if (subjects.length > 0 && !subject) {
+      setSubject(subjects[0]);
+    }
+  }, [subjects, subject]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,6 +32,7 @@ export default function AddChapterModal({ isOpen, onClose }: { isOpen: boolean, 
         subject,
         classLevel,
         videos: [],
+        coverImage: getChapterCoverImage(subject, title),
         createdBy: auth.currentUser?.uid,
         createdAt: serverTimestamp()
       });
@@ -74,7 +86,7 @@ export default function AddChapterModal({ isOpen, onClose }: { isOpen: boolean, 
                     onChange={(e) => setSubject(e.target.value)}
                     className="w-full bg-transparent border app-card rounded-xl py-2.5 px-3 focus:outline-none font-medium [&>option]:bg-slate-800 [&>option]:text-white border-slate-300 dark:border-slate-700"
                   >
-                    {['Math', 'Science', 'English', 'Computer', 'History'].map(s => (
+                    {subjects.map(s => (
                       <option key={s} value={s}>{s}</option>
                     ))}
                   </select>

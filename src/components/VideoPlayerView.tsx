@@ -258,7 +258,7 @@ export default function VideoPlayerView({ video, setTab, hasActiveChapter }: { v
                   setIsPlaying(false);
                   setIsCompleted(true);
                   if (!isAlreadyCompleted) {
-                    markLessonComplete(video.id, duration >= 1800 ? 2 : 1);
+                    markLessonComplete(video.id, duration >= 1800 ? 70 : 50);
                     confetti({
                       particleCount: 100,
                       spread: 80,
@@ -394,7 +394,7 @@ export default function VideoPlayerView({ video, setTab, hasActiveChapter }: { v
     frame();
 
     setIsCompleted(true);
-    const pointsToAward = duration >= 1800 ? 2 : 1;
+    const pointsToAward = duration >= 1800 ? 70 : 50;
     await markLessonComplete(video.id, pointsToAward);
   };
 
@@ -907,7 +907,7 @@ export default function VideoPlayerView({ video, setTab, hasActiveChapter }: { v
             {isAlreadyCompleted || isCompleted 
                ? 'Completed' 
                : canComplete 
-                 ? `Mark as Completed (+${duration >= 1800 ? 2 : 1} Points)` 
+                 ? `Mark as Completed (+${duration >= 1800 ? 70 : 50} Points)` 
                  : 'Keep Watching to Complete...'}
           </button>
 

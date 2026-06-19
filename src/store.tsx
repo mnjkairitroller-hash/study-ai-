@@ -16,6 +16,13 @@ export interface UserData {
   completedLessons: string[]; // List of lesson IDs
   lessonProgress?: Record<string, number>; // Maps lesson ID to seconds watched
   deletePin?: string;
+  subjects?: string[];
+  currentRoutine?: {
+    date: string;
+    videos: { id: string; title: string; videoUrl: string; subject: string; duration?: number }[];
+  } | null;
+  lastRoutinePenaltyDate?: string;
+  redemptionHistory?: { id: string; title: string; cost: number; date: string; coupon: string }[];
 }
 
 const DEFAULT_USER_DATA: UserData = {
@@ -30,6 +37,7 @@ const DEFAULT_USER_DATA: UserData = {
   completedLessons: [],
   lessonProgress: {},
   deletePin: '',
+  subjects: ['Math', 'Science', 'English', 'Computer', 'History'],
 };
 
 interface AppContextType {
@@ -38,7 +46,7 @@ interface AppContextType {
   loading: boolean;
   updateUserData: (data: Partial<UserData>) => Promise<void>;
   addPoints: (amount: number) => Promise<void>;
-  redeemReward: (cost: number, rewardName: string) => Promise<void>;
+  redeemReward: (cost: number, rewardId: string, rewardTitle: string) => Promise<void>;
   setTheme: (theme: string) => Promise<void>;
   markLessonComplete: (lessonId: string, pointsEarned: number) => Promise<void>;
   updateLessonProgress: (lessonId: string, progressSeconds: number) => Promise<void>;
@@ -134,12 +142,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await updateUserData({ points: newPoints, level: newLevel });
   };
 
-  const redeemReward = async (cost: number, rewardName: string) => {
+  const redeemReward = async (cost: number, rewardId: string, rewardTitle: string) => {
     if (!userData || !user || userData.points < cost) return;
-    const couponCode = `SQ-${Math.random().toString(36).substring(2, 8).toUpperCase()}-${rewardName.substring(0, 3).toUpperCase()}`;
+    const couponCode = `SQ-${Math.random().toString(36).substring(2, 8).toUpperCase()}-${rewardId.substring(0, 3).toUpperCase()}`;
+    const newRedemption = {
+      id: Math.random().toString(36).substring(2, 9),
+      title: rewardTitle,
+      cost: cost,
+      date: new Date().toISOString(),
+      coupon: couponCode,
+    };
+    const currentHistory = userData.redemptionHistory || [];
     await updateUserData({
       points: userData.points - cost,
       rewards: [...userData.rewards, couponCode],
+      redemptionHistory: [...currentHistory, newRedemption],
     });
   };
 
