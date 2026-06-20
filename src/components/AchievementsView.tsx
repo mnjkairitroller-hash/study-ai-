@@ -29,7 +29,7 @@ const SPIN_WHEEL_SECTORS = [
 ];
 
 export default function AchievementsView() {
-  const { userData } = useAppContext();
+  const { userData, user } = useAppContext();
   const [completedTitles, setCompletedTitles] = useState<string[]>([]);
   const currentLevel = userData?.level || 1;
 
@@ -69,7 +69,7 @@ export default function AchievementsView() {
 
   useEffect(() => {
     const fetchHistory = async () => {
-      if (!userData?.completedLessons?.length) return;
+      if (!user || !userData?.completedLessons?.length) return;
       try {
         const q = query(collection(db, 'chapters'));
         const snap = await getDocs(q);

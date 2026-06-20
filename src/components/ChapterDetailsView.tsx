@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../lib/firebase';
-import { doc, onSnapshot, updateDoc, arrayUnion, deleteDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, arrayUnion, deleteDoc, collection, query, where, orderBy } from 'firebase/firestore';
 import { ArrowLeft, PlayCircle, Plus, Trash2, Youtube, ListVideo, Lock, MoreVertical, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAppContext } from '../store';
@@ -13,9 +13,29 @@ function extractYtId(url: string) {
 }
 
 export default function ChapterDetailsView({ chapter, setTab, setPlayingVideo }: { chapter: any, setTab: (t: string) => void, setPlayingVideo: (v: any) => void }) {
-  const { userData, markLessonComplete } = useAppContext();
+  const { userData, user, markLessonComplete } = useAppContext();
   const [chapterData, setChapterData] = useState<any>(chapter);
+  const [chapterNumber, setChapterNumber] = useState(1);
   const [isAddOpen, setIsAddOpen] = useState(false);
+
+  useEffect(() => {
+    if (!user || !chapterData?.subject) return;
+    const q = query(
+      collection(db, 'chapters'),
+      where('subject', '==', chapterData.subject),
+      orderBy('createdAt', 'asc')
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const ids = snap.docs.map(doc => doc.id);
+      const index = ids.indexOf(chapter.id);
+      if (index !== -1) {
+        setChapterNumber(index + 1);
+      }
+    }, (err) => {
+      console.error("Error determining chapter details sequence:", err);
+    });
+    return () => unsub();
+  }, [chapterData?.subject, chapter.id]);
   const [newUrl, setNewUrl] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [addLoading, setAddLoading] = useState(false);
@@ -334,16 +354,41 @@ export default function ChapterDetailsView({ chapter, setTab, setPlayingVideo }:
 
       <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 pb-32">
         {/* Chapter Cover Hero Card */}
-        <div className="w-full h-44 md:h-56 rounded-3xl overflow-hidden relative mb-8 shadow-md border border-slate-200/50 dark:border-slate-800/80">
-          <img 
-            src={chapterData.coverImage || getChapterCoverImage(chapterData.subject, chapterData.title)} 
-            alt={chapterData.title} 
-            className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/40 to-transparent flex flex-col justify-end p-5 md:p-6">
-            <span className="text-xs font-black uppercase tracking-wider text-indigo-400 mb-1">{chapterData.subject} • {chapterData.classLevel || 'Class 10'}</span>
-            <h2 className="text-xl md:text-2xl font-extrabold text-white tracking-tight drop-shadow-sm">{chapterData.title}</h2>
+        <div className={`w-full h-44 md:h-56 rounded-3xl overflow-hidden relative mb-8 shadow-md border border-slate-200/50 dark:border-slate-800/80 bg-gradient-to-br ${(() => {
+          const s = (chapterData.subject || '').toLowerCase();
+          if (s.includes('math')) return 'from-blue-600 via-indigo-600 to-cyan-600 dark:from-blue-800 dark:via-indigo-950 dark:to-cyan-800';
+          if (s.includes('sci')) return 'from-emerald-600 via-teal-600 to-green-600 dark:from-emerald-800 dark:via-teal-950 dark:to-green-800';
+          if (s.includes('eng')) return 'from-violet-600 via-fuchsia-600 to-pink-600 dark:from-violet-800 dark:via-fuchsia-950 dark:to-pink-800';
+          if (s.includes('comp') || s.includes('cod')) return 'from-indigo-600 via-purple-600 to-blue-600 dark:from-indigo-800 dark:via-purple-950 dark:to-blue-800';
+          if (s.includes('hist') || s.includes('soc')) return 'from-amber-500 via-orange-500 to-yellow-500 dark:from-amber-700 dark:via-orange-950 dark:to-yellow-700';
+          return 'from-pink-500 via-rose-500 to-red-500 dark:from-pink-700 dark:via-rose-950 dark:to-red-700';
+        })()} flex items-center justify-between p-6 md:p-8 text-white select-none`}>
+          {/* Decorative circles */}
+          <div className="absolute top-[-20px] right-[-20px] w-40 h-40 rounded-full bg-white/10 blur-xl"></div>
+          <div className="absolute bottom-[-20px] left-[-20px] w-48 h-48 rounded-full bg-black/15 blur-xl"></div>
+          
+          <div className="flex flex-col justify-end h-full z-10 max-w-lg md:max-w-2xl">
+            <span className="text-[10px] md:text-xs font-black uppercase tracking-wider text-white/80 mb-2">
+              {chapterData.subject} • {chapterData.classLevel || 'Class 10'}
+            </span>
+            <h2 className="text-xl md:text-3xl font-black text-white tracking-tight leading-tight filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
+              {chapterData.title}
+            </h2>
+            <div className="mt-3 text-[10px] md:text-xs font-bold bg-white/20 backdrop-blur-sm px-3 py-1.5 rounded-full inline-flex items-center gap-1 w-max">
+              📚 Chapter {chapterNumber}
+            </div>
+          </div>
+
+          {/* Majestic, Cute Bouncy Sticker Number */}
+          <div className="relative z-10 hidden sm:flex flex-col items-center justify-center shrink-0 w-24 h-24 md:w-28 md:h-28 rounded-[1.751rem] bg-white text-indigo-950 shadow-2xl border-[3px] border-white/50 transform rotate-3 hover:scale-105 transition-all">
+            {/* Glossy shine */}
+            <div className="absolute top-1.5 left-3 w-3 h-3 rounded-full bg-indigo-200/40 blur-[1px]"></div>
+            <div className="absolute bottom-1.5 right-3 w-4 h-4 rounded-full bg-slate-100/50 blur-[2px]"></div>
+            <span className="text-[8px] md:text-[9.5px] font-black tracking-widest text-slate-400 uppercase">CHAPTER</span>
+            <span className="text-4xl md:text-5xl font-black bg-gradient-to-br from-indigo-600 to-fuchsia-600 bg-clip-text text-transparent filter drop-shadow-sm leading-none mt-0.5">
+              {chapterNumber}
+            </span>
+            <div className="absolute -top-2.5 -right-2.5 text-lg animate-bounce">✨</div>
           </div>
         </div>
 

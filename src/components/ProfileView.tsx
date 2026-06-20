@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../store';
 import { auth, db } from '../lib/firebase';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, where } from 'firebase/firestore';
 import { LogOut, Palette, Ticket, Shield, Lock, Calendar, CheckCircle2, Clock3, AlertTriangle, Sparkles, PlayCircle, Star, GraduationCap } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 
@@ -29,6 +29,7 @@ export default function ProfileView() {
 
   // Subscribe to all chapters so we have real subjects, topics, and video parts
   useEffect(() => {
+    if (!user) return;
     const q = query(collection(db, 'chapters'), orderBy('createdAt', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -37,7 +38,7 @@ export default function ProfileView() {
       console.error("Error fetching chapters for Timetable:", err);
     });
     return () => unsubscribe();
-  }, []);
+  }, [user]);
 
   if (!userData) return null;
 
@@ -117,16 +118,32 @@ export default function ProfileView() {
     const todayStr = new Date().toDateString();
     let todayLessons: any[] = [];
 
+    const getWeekdayForOffset = (offset: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() + offset);
+      return d.getDay();
+    };
+
     if (userData.currentRoutine && userData.currentRoutine.date === todayStr) {
       // Keep today's assigned videos stable based on dashboard routine
       todayLessons = userData.currentRoutine.videos || [];
     } else {
       // Dynamic fallback
+      const todayDay = new Date().getDay();
+      const isEnglishDay = todayDay === 1 || todayDay === 4;
+
       sortedSubjects.forEach(subject => {
+        const isEnglish = (subject?.toLowerCase() || '').includes('eng');
+        if (isEnglish && !isEnglishDay) return;
+
+        const isMath = (subject?.toLowerCase() || '').includes('math');
+        const requiredVideos = (isMath && !isEnglishDay) ? 2 : 1;
+
         const queue = subjectQueues[subject] || [];
-        const nextUncompleted = queue.find(vid => !completed.includes(vid.id));
-        if (nextUncompleted) {
-          todayLessons.push(nextUncompleted);
+        const uncompleted = queue.filter(vid => !completed.includes(vid.id));
+        
+        for (let i = 0; i < Math.min(requiredVideos, uncompleted.length); i++) {
+          todayLessons.push(uncompleted[i]);
         }
       });
     }
@@ -136,26 +153,43 @@ export default function ProfileView() {
     const dayAfterLessons: any[] = [];
 
     sortedSubjects.forEach(subject => {
+      const isEnglish = (subject?.toLowerCase() || '').includes('eng');
+      const isMath = (subject?.toLowerCase() || '').includes('math');
       const queue = subjectQueues[subject] || [];
-      const todayVid = todayLessons.find(v => v.subject === subject);
-
-      let todayIdx = -1;
-      if (todayVid) {
-        todayIdx = queue.findIndex(v => v.id === todayVid.id);
+      
+      const todayVids = todayLessons.filter(v => v.subject === subject);
+      let lastViewedIdx = -1;
+      
+      if (todayVids.length > 0) {
+        lastViewedIdx = queue.findIndex(v => v.id === todayVids[todayVids.length - 1].id);
       } else {
-        todayIdx = queue.findIndex(v => !completed.includes(v.id)) - 1;
+         const firstUncompleted = queue.findIndex(v => !completed.includes(v.id));
+         lastViewedIdx = firstUncompleted === -1 ? -1 : firstUncompleted - 1;
       }
 
-      // Tomorrow is next item
-      const tomorrowIdx = todayIdx + 1;
-      if (tomorrowIdx >= 0 && tomorrowIdx < queue.length) {
-        tomorrowLessons.push(queue[tomorrowIdx]);
+      // Calculate Tomorrow
+      const tomorrowDay = getWeekdayForOffset(1);
+      const tomorrowEnglishDay = tomorrowDay === 1 || tomorrowDay === 4;
+      if (!isEnglish || tomorrowEnglishDay) {
+        const requiredTomorrow = (isMath && !tomorrowEnglishDay) ? 2 : 1;
+        for (let i = 1; i <= requiredTomorrow; i++) {
+           if (lastViewedIdx + i < queue.length) {
+             tomorrowLessons.push(queue[lastViewedIdx + i]);
+           }
+        }
+        lastViewedIdx += requiredTomorrow; // advance cursor
       }
 
-      // Day After is second next item
-      const dayAfterIdx = todayIdx + 2;
-      if (dayAfterIdx >= 0 && dayAfterIdx < queue.length) {
-        dayAfterLessons.push(queue[dayAfterIdx]);
+      // Calculate Day After
+      const dayAfterDay = getWeekdayForOffset(2);
+      const dayAfterEnglishDay = dayAfterDay === 1 || dayAfterDay === 4;
+      if (!isEnglish || dayAfterEnglishDay) {
+        const requiredDayAfter = (isMath && !dayAfterEnglishDay) ? 2 : 1;
+        for (let i = 1; i <= requiredDayAfter; i++) {
+          if (lastViewedIdx + i < queue.length) {
+            dayAfterLessons.push(queue[lastViewedIdx + i]);
+          }
+        }
       }
     });
 
@@ -229,33 +263,33 @@ export default function ProfileView() {
         </div>
       </div>
 
-      {/* 📅 3-Day Personalized Dynamic Timetable */}
+      {/* 📅 Cute Personalized 3-Day Study Timetable */}
       <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-6 shadow-xl space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div>
             <h3 className="font-black text-xl flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
               <Calendar className="text-indigo-500 animate-pulse" size={24} />
-              Personalized 3-Day Timetable (3-दिन का टाइम टेबल)
+              Personalized 3-Day Study Planner
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Your customized learning path for today, tomorrow, and day after tomorrow. Created dynamically based on parent/teacher uploads!
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
+              Your automated study schedule computed dynamically from uploaded topics. Study daily to win streaks!
             </p>
           </div>
           
           <div className="flex items-center gap-1.5 p-1 bg-slate-50 dark:bg-slate-950 rounded-xl self-start border border-slate-100/50 dark:border-slate-800/80">
             <button
               onClick={() => setActiveDayTab('today')}
-              className={`px-4 py-2 text-xs font-black rounded-lg transition-all flex items-center gap-1 ${
+              className={`px-4 py-2 text-xs font-black rounded-lg transition-all flex items-center gap-1.5 ${
                 activeDayTab === 'today'
-                  ? 'bg-indigo-600 text-white shadow-md'
+                  ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-md'
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900'
               }`}
             >
-              Today (आज)
+              🗓️ Today
               {timetable.today.length > 0 && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
                   getDayCompletedCount(timetable.today) === timetable.today.length
-                    ? 'bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 font-black border border-emerald-400/20'
+                    ? 'bg-emerald-500 text-white border border-emerald-400/20'
                     : 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400'
                 }`}>
                   {getDayCompletedCount(timetable.today)}/{timetable.today.length}
@@ -264,30 +298,30 @@ export default function ProfileView() {
             </button>
             <button
               onClick={() => setActiveDayTab('tomorrow')}
-              className={`px-4 py-2 text-xs font-black rounded-lg transition-all flex items-center gap-1 ${
+              className={`px-4 py-2 text-xs font-black rounded-lg transition-all flex items-center gap-1.5 ${
                 activeDayTab === 'tomorrow'
                   ? 'bg-indigo-600 text-white shadow-md'
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900'
               }`}
             >
-              Tomorrow (कल)
+              🌅 Tomorrow
               {timetable.tomorrow.length > 0 && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-black bg-slate-500/20 text-slate-600 dark:text-slate-400">
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-black bg-slate-500/15 text-slate-600 dark:text-slate-400">
                   {timetable.tomorrow.length}
                 </span>
               )}
             </button>
             <button
               onClick={() => setActiveDayTab('dayAfter')}
-              className={`px-4 py-2 text-xs font-black rounded-lg transition-all flex items-center gap-1 ${
+              className={`px-4 py-2 text-xs font-black rounded-lg transition-all flex items-center gap-1.5 ${
                 activeDayTab === 'dayAfter'
                   ? 'bg-indigo-600 text-white shadow-md'
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900'
               }`}
             >
-              Day After (परसों)
+              🚀 Next Day
               {timetable.dayAfter.length > 0 && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-black bg-slate-500/20 text-slate-600 dark:text-slate-400">
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-black bg-slate-500/15 text-slate-600 dark:text-slate-400">
                   {timetable.dayAfter.length}
                 </span>
               )}
@@ -315,34 +349,40 @@ export default function ProfileView() {
                   key={video.id}
                   className={`p-4 rounded-2xl transition-all border flex flex-col justify-between h-40 ${
                     isCompleted 
-                      ? 'border-emerald-200 dark:border-emerald-950 bg-emerald-50/5 dark:bg-emerald-950/5 shadow-sm' 
+                      ? 'border-emerald-300 dark:border-emerald-900 bg-emerald-500/5 dark:bg-emerald-950/10 shadow-sm relative overflow-hidden' 
                       : activeDayTab === 'today'
-                        ? 'border-indigo-100/80 dark:border-indigo-950/35 bg-indigo-50/5 dark:bg-indigo-950/5 hover:border-indigo-300 dark:hover:border-indigo-800'
-                        : 'border-slate-100 dark:border-slate-800/85 hover:border-slate-350'
+                        ? 'border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/5 dark:bg-indigo-950/5 hover:border-indigo-300 dark:hover:border-indigo-800 hover:shadow-md'
+                        : 'border-slate-100 dark:border-slate-800/85 hover:border-slate-300 bg-slate-50/40'
                   }`}
                 >
+                  {isCompleted && (
+                    <div className="absolute right-[-15px] top-[15px] bg-emerald-500 text-white text-[8px] font-black uppercase tracking-widest px-5 py-1 rotate-45 shadow-sm">
+                      Done ✨
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <div className="flex justify-between items-start gap-1">
                       <span className={`text-[10px] uppercase font-black px-2.5 py-1 rounded-full ${getSubjectStyles(video.subject)}`}>
                         {video.subject}
                       </span>
                       {isCompleted ? (
-                        <span className="flex items-center gap-1 text-[10px] uppercase font-black px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 border border-emerald-100/50 dark:border-emerald-900/20 shadow-sm">
-                          <CheckCircle2 size={10} strokeWidth={3} className="text-emerald-500" /> MASTERED
+                        <span className="flex items-center gap-1 text-[10px] uppercase font-black px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-900/20 shadow-sm">
+                          <CheckCircle2 size={10} strokeWidth={3} className="text-emerald-500" /> Completed
                         </span>
                       ) : activeDayTab === 'today' ? (
-                        <span className="flex items-center gap-1 text-[10px] uppercase font-black px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 border border-amber-100/50 dark:border-amber-900/20">
-                          <Clock3 size={10} /> REQUIRED
+                        <span className="flex items-center gap-1 text-[10px] uppercase font-black px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-400 border border-amber-200/50 dark:border-amber-900/10">
+                          <Clock3 size={10} /> Active Today
                         </span>
                       ) : (
                         <span className="flex items-center gap-1 text-[10px] uppercase font-black px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 border border-slate-200/50 dark:border-slate-800/20">
-                          <Lock size={10} /> UPCOMING
+                          <Lock size={10} /> Upcoming
                         </span>
                       )}
                     </div>
 
                     <div>
-                      <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200 line-clamp-1">
+                      <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200 line-clamp-1 pr-6">
                         {video.title}
                       </h4>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1 mt-0.5 font-medium">
@@ -366,12 +406,12 @@ export default function ProfileView() {
                           +50 XP
                         </span>
                         <span className="text-xs font-black text-indigo-500 flex items-center gap-1 select-none animate-pulse">
-                          Watch on Dashboard <PlayCircle size={14} />
+                          Start on Dashboard <PlayCircle size={14} />
                         </span>
                       </div>
                     ) : (
                       <span className="text-[11px] text-slate-400 flex items-center gap-1 select-none font-medium">
-                        Locks tomorrow <Lock size={11} />
+                        Unlocks tomorrow <Lock size={11} />
                       </span>
                     )}
                   </div>
@@ -382,16 +422,14 @@ export default function ProfileView() {
         )}
 
         {/* Rollover Warning notice */}
-        <div className="bg-rose-50/25 dark:bg-rose-950/10 border border-rose-505/10 rounded-2xl p-4 flex items-start gap-3">
+        <div className="bg-rose-50/30 dark:bg-rose-950/10 border border-rose-100 dark:border-rose-950/40 rounded-2xl p-4 flex items-start gap-3">
           <AlertTriangle className="text-rose-500 shrink-0 mt-0.5" size={18} />
           <div className="space-y-1 text-left">
             <h5 className="text-xs font-black text-rose-500 uppercase tracking-wide flex items-center gap-1.5">
-              Habit & Discipline Reward Policy (समय सारणी अनुशासन नियम)
+              Study Streak & discipline policy
             </h5>
-            <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-              If you don't complete today's lessons today, you can still watch them tomorrow, but 
-              <strong> severe point penalties (-30 to -40 XP)</strong> will be deducted when the day rolls over! 
-              Keep your daily streak alive and complete lists on time to reach higher levels! 🚀
+            <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed font-semibold">
+              Missed lessons are rolled over to the next day's active list with a minor study penalty (-30 to -40 XP deducted) to help you stay on track! Finish today's tasks to keep your daily streak glowing! 💖
             </p>
           </div>
         </div>

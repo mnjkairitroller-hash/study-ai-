@@ -34,6 +34,7 @@ export default function AddChapterModal({ isOpen, onClose }: { isOpen: boolean, 
         videos: [],
         coverImage: getChapterCoverImage(subject, title),
         createdBy: auth.currentUser?.uid,
+        userId: auth.currentUser?.uid,
         createdAt: serverTimestamp()
       });
       onClose();

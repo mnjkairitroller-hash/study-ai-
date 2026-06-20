@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
-import { collection, query, orderBy, onSnapshot, limit } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, limit, where } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firebase';
 import { useAppContext } from '../store';
 import { getLevelInfo } from '../lib/utils';
@@ -457,7 +457,8 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
   };
 
   useEffect(() => {
-    const q = query(collection(db, 'chapters'), orderBy('createdAt', 'desc'));
+    if (!user) return;
+    const q = query(collection(db, 'chapters'), orderBy('createdAt', 'asc'));
     const unsub = onSnapshot(q, (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setChapters(data);
@@ -465,7 +466,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
       handleFirestoreError(error, OperationType.GET, 'chapters');
     });
     return () => unsub();
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -486,7 +487,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
       handleFirestoreError(error, OperationType.GET, 'users');
     });
     return () => unsubUsers();
-  }, []);
+  }, [user]);
 
   const handleBoosterAnswer = async (optIdx: number) => {
     if (boosterSolved) return;
@@ -520,6 +521,8 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
     });
 
     const routineVideos: any[] = [];
+    const todayDay = new Date().getDay();
+    const isEnglishDay = todayDay === 1 || todayDay === 4;
 
     // 2. Sort subjects dynamically so we have a consistent priority listing (Math, Science, English, etc.)
     const sortedSubjects = Object.keys(chaptersBySubject).sort((a, b) => {
@@ -531,6 +534,14 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
     });
 
     sortedSubjects.forEach(subject => {
+      // English is scheduled only on Monday (1) and Thursday (4)
+      const isEnglish = (subject?.toLowerCase() || '').includes('eng');
+      if (isEnglish && !isEnglishDay) {
+        return; // Skip English on non-Mon/Thu days
+      }
+
+      const isMath = (subject?.toLowerCase() || '').includes('math');
+
       // Sort chapters of this subject oldest first (by createdAt ascending)
       const subjectChapters = [...chaptersBySubject[subject]].sort((a, b) => {
         const timeA = a.createdAt?.seconds || 0;
@@ -538,31 +549,36 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
         return timeA - timeB;
       });
 
-      let activeVideo = null;
+      const activeVideos = [];
+      const requiredVideos = (isMath && !isEnglishDay) ? 2 : 1;
 
       for (const chapter of subjectChapters) {
         if (chapter.videos && chapter.videos.length > 0) {
-          const nextUncompleted = chapter.videos.find((video: any) => 
+          const uncompletedVideos = chapter.videos.map((v: any, idx: number) => ({ ...v, partIdx: idx })).filter((video: any) => 
             !userData.completedLessons?.includes(video.id)
           );
 
-          if (nextUncompleted) {
-            const partIdx = chapter.videos.findIndex((v: any) => v.id === nextUncompleted.id);
-            activeVideo = {
-              ...nextUncompleted,
-              subject: subject,
-              chapterTitle: chapter.title,
-              partNumber: partIdx + 1,
-              chapterId: chapter.id
-            };
-            break; // Stop: user must finish current active chapter before moving to the next
+          for (const video of uncompletedVideos) {
+            if (activeVideos.length < requiredVideos) {
+              activeVideos.push({
+                ...video,
+                subject: subject,
+                chapterTitle: chapter.title,
+                partNumber: video.partIdx + 1,
+                chapterId: chapter.id
+              });
+            } else {
+              break;
+            }
+          }
+
+          if (activeVideos.length >= requiredVideos) {
+            break;
           }
         }
       }
 
-      if (activeVideo) {
-        routineVideos.push(activeVideo);
-      }
+      routineVideos.push(...activeVideos);
     });
 
     // Return the list of unique-subject videos for the tuition routine
@@ -641,9 +657,24 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
         }
       }
 
-      // 3. Generate today's new routine
-      const nextRoutine = generateRoutine();
-      const resolvedNext = await resolveVideoDurations(nextRoutine);
+      // 3. Generate today's new routine with shift rules:
+      // Carry over any uncompleted (missed) lessons from yesterday's routine
+      const shiftedVideos = currentRoutine.videos.filter(v => !completed.includes(v.id));
+      const shiftedSubjects = shiftedVideos.map(v => v.subject);
+
+      // Generate next uncompleted lessons from the database
+      const freshRoutine = generateRoutine();
+
+      // Combine shifted lessons and fresh lessons for fully completed subjects
+      const combinedRoutine = [...shiftedVideos];
+      freshRoutine.forEach(freshVid => {
+        if (!shiftedSubjects.includes(freshVid.subject)) {
+          combinedRoutine.push(freshVid);
+        }
+      });
+
+      // Resolve durations for the combined list
+      const resolvedNext = await resolveVideoDurations(combinedRoutine);
 
       const updatePayload: any = {
         currentRoutine: {
@@ -967,7 +998,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
                          if (setPlayingVideo) setPlayingVideo(video);
                          setTab('player');
                       }}
-                      className="app-card rounded-3xl border border-slate-200/60 dark:border-slate-800/60 overflow-hidden cursor-pointer hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300 group bg-white dark:bg-slate-900/50 flex flex-col"
+                      className="app-card rounded-3xl border-[3px] border-indigo-200/70 dark:border-indigo-500/30 overflow-hidden cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-400 hover:shadow-xl hover:shadow-indigo-500/20 transition-all duration-300 group bg-white dark:bg-slate-900/50 flex flex-col"
                     >
                       {/* Video Thumbnail (16:9 Aspect Ratio like YouTube) - Flush with top/sides */}
                       <div className="relative aspect-video w-full bg-slate-900 dark:bg-slate-950 overflow-hidden">

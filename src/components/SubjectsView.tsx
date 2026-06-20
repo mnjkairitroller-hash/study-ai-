@@ -1,16 +1,465 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
-import { collection, query, orderBy, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, deleteDoc, where } from 'firebase/firestore';
 import { Plus, BookOpen, ChevronRight, Trash2, KeyRound, AlertTriangle, X } from 'lucide-react';
 import AddChapterModal from './AddChapterModal';
 import { useAppContext } from '../store';
 import { getChapterCoverImage } from '../lib/utils';
 
+interface CuteChapterIconProps {
+  subject: string;
+  num: number;
+}
+
+export function CuteChapterIcon({ subject, num }: CuteChapterIconProps) {
+  const { userData } = useAppContext();
+  const activeTheme = userData?.theme || 'slate';
+
+  const getColors = (subj: string, theme: string) => {
+    const s = subj?.toLowerCase() || '';
+    const t = theme?.toLowerCase() || 'slate';
+
+    // Dark-oriented vibrant themes (Classic Slate, Cyberpunk, Cosmic Dream Nebula)
+    if (t === 'slate' || t === 'cyberpunk' || t === 'nebula') {
+      if (s.includes('math')) {
+        return {
+          bg: 'from-blue-500 to-cyan-400 dark:from-blue-600 dark:to-cyan-600',
+          text: 'text-white',
+          border: 'border-blue-400 dark:border-blue-500',
+          shadow: 'shadow-blue-500/20'
+        };
+      }
+      if (s.includes('sci')) {
+        return {
+          bg: 'from-emerald-500 to-teal-400 dark:from-emerald-600 dark:to-teal-600',
+          text: 'text-white',
+          border: 'border-emerald-400 dark:border-emerald-500',
+          shadow: 'shadow-emerald-500/20'
+        };
+      }
+      if (s.includes('eng')) {
+        return {
+          bg: 'from-violet-500 to-fuchsia-400 dark:from-violet-600 dark:to-fuchsia-600',
+          text: 'text-white',
+          border: 'border-violet-400 dark:border-violet-500',
+          shadow: 'shadow-violet-500/20'
+        };
+      }
+      if (s.includes('comp') || s.includes('cod')) {
+        return {
+          bg: 'from-indigo-500 to-purple-400 dark:from-indigo-600 dark:to-purple-600',
+          text: 'text-white',
+          border: 'border-indigo-400 dark:border-indigo-500',
+          shadow: 'shadow-indigo-500/20'
+        };
+      }
+      if (s.includes('hist') || s.includes('soc')) {
+        return {
+          bg: 'from-amber-500 to-orange-400 dark:from-amber-600 dark:to-orange-500',
+          text: 'text-stone-950 dark:text-white',
+          border: 'border-amber-400 dark:border-amber-500',
+          shadow: 'shadow-amber-500/20'
+        };
+      }
+      return {
+        bg: 'from-pink-500 to-rose-450 dark:from-pink-600 dark:to-rose-600',
+        text: 'text-white',
+        border: 'border-pink-400 dark:border-pink-500',
+        shadow: 'shadow-pink-500/20'
+      };
+    }
+
+    // Sakura Pink theme (Sweet dreamy pastels)
+    if (t === 'sakura') {
+      if (s.includes('math')) {
+        return {
+          bg: 'from-sky-250 to-indigo-300',
+          text: 'text-indigo-950',
+          border: 'border-sky-150',
+          shadow: 'shadow-pink-100'
+        };
+      }
+      if (s.includes('sci')) {
+        return {
+          bg: 'from-teal-200 to-emerald-250',
+          text: 'text-emerald-950',
+          border: 'border-teal-150',
+          shadow: 'shadow-pink-100'
+        };
+      }
+      if (s.includes('eng')) {
+        return {
+          bg: 'from-pink-300 to-rose-300',
+          text: 'text-pink-950',
+          border: 'border-pink-200',
+          shadow: 'shadow-pink-100'
+        };
+      }
+      if (s.includes('comp') || s.includes('cod')) {
+        return {
+          bg: 'from-purple-250 to-pink-300',
+          text: 'text-purple-950',
+          border: 'border-purple-200',
+          shadow: 'shadow-pink-100'
+        };
+      }
+      if (s.includes('hist') || s.includes('soc')) {
+        return {
+          bg: 'from-orange-200 to-pink-250',
+          text: 'text-orange-950',
+          border: 'border-orange-150',
+          shadow: 'shadow-pink-100'
+        };
+      }
+      return {
+        bg: 'from-pink-200 to-rose-200',
+        text: 'text-pink-950',
+        border: 'border-pink-150',
+        shadow: 'shadow-pink-100'
+      };
+    }
+
+    // Emerald dynamic theme (botanical/fresh)
+    if (t === 'emerald') {
+      if (s.includes('math')) {
+        return {
+          bg: 'from-cyan-200 to-emerald-300',
+          text: 'text-emerald-950',
+          border: 'border-cyan-150',
+          shadow: 'shadow-emerald-50'
+        };
+      }
+      if (s.includes('sci')) {
+        return {
+          bg: 'from-emerald-350 to-teal-350',
+          text: 'text-emerald-950',
+          border: 'border-emerald-200',
+          shadow: 'shadow-emerald-100'
+        };
+      }
+      if (s.includes('eng')) {
+        return {
+          bg: 'from-teal-200 to-fuchsia-350',
+          text: 'text-emerald-950',
+          border: 'border-teal-150',
+          shadow: 'shadow-emerald-50'
+        };
+      }
+      if (s.includes('comp') || s.includes('cod')) {
+        return {
+          bg: 'from-emerald-250 to-sky-300',
+          text: 'text-emerald-950',
+          border: 'border-emerald-150',
+          shadow: 'shadow-emerald-50'
+        };
+      }
+      if (s.includes('hist') || s.includes('soc')) {
+        return {
+          bg: 'from-lime-200 to-emerald-350',
+          text: 'text-emerald-950',
+          border: 'border-lime-150',
+          shadow: 'shadow-emerald-50'
+        };
+      }
+      return {
+        bg: 'from-teal-200 to-emerald-250',
+        text: 'text-teal-950',
+        border: 'border-teal-150',
+        shadow: 'shadow-emerald-50'
+      };
+    }
+
+    // Sunset theme (Orange/Warm evening glow)
+    if (t === 'sunset') {
+      if (s.includes('math')) {
+        return {
+          bg: 'from-orange-350 to-amber-450',
+          text: 'text-orange-950',
+          border: 'border-orange-250',
+          shadow: 'shadow-amber-100/40'
+        };
+      }
+      if (s.includes('sci')) {
+        return {
+          bg: 'from-yellow-350 to-amber-450',
+          text: 'text-amber-950',
+          border: 'border-yellow-250',
+          shadow: 'shadow-amber-100/40'
+        };
+      }
+      if (s.includes('eng')) {
+        return {
+          bg: 'from-rose-350 to-orange-355',
+          text: 'text-rose-950',
+          border: 'border-rose-250',
+          shadow: 'shadow-orange-100/40'
+        };
+      }
+      if (s.includes('comp') || s.includes('cod')) {
+        return {
+          bg: 'from-amber-350 to-red-400',
+          text: 'text-orange-950',
+          border: 'border-amber-250',
+          shadow: 'shadow-orange-100/40'
+        };
+      }
+      if (s.includes('hist') || s.includes('soc')) {
+        return {
+          bg: 'from-amber-250 to-orange-350',
+          text: 'text-amber-950',
+          border: 'border-amber-150',
+          shadow: 'shadow-amber-100/30'
+        };
+      }
+      return {
+        bg: 'from-orange-300 to-amber-350',
+        text: 'text-orange-950',
+        border: 'border-orange-200',
+        shadow: 'shadow-orange-100/30'
+      };
+    }
+
+    // Lavender theme (Sweet purple fields)
+    if (t === 'lavender') {
+      if (s.includes('math')) {
+        return {
+          bg: 'from-sky-200 to-violet-300',
+          text: 'text-violet-950',
+          border: 'border-sky-150',
+          shadow: 'shadow-violet-100'
+        };
+      }
+      if (s.includes('sci')) {
+        return {
+          bg: 'from-teal-150 to-violet-250',
+          text: 'text-violet-950',
+          border: 'border-teal-100',
+          shadow: 'shadow-violet-100'
+        };
+      }
+      if (s.includes('eng')) {
+        return {
+          bg: 'from-violet-300 to-fuchsia-300',
+          text: 'text-violet-950',
+          border: 'border-violet-200',
+          shadow: 'shadow-violet-100'
+        };
+      }
+      if (s.includes('comp') || s.includes('cod')) {
+        return {
+          bg: 'from-indigo-250 to-purple-355',
+          text: 'text-purple-950',
+          border: 'border-indigo-150',
+          shadow: 'shadow-violet-100'
+        };
+      }
+      if (s.includes('hist') || s.includes('soc')) {
+        return {
+          bg: 'from-purple-200 to-pink-250',
+          text: 'text-purple-950',
+          border: 'border-purple-150',
+          shadow: 'shadow-violet-100'
+        };
+      }
+      return {
+        bg: 'from-violet-200 to-purple-250',
+        text: 'text-violet-950',
+        border: 'border-violet-150',
+        shadow: 'shadow-violet-100'
+      };
+    }
+
+    // Honey theme (Cozy warm caramelized tones)
+    if (t === 'honey') {
+      if (s.includes('math')) {
+        return {
+          bg: 'from-amber-250 to-yellow-350',
+          text: 'text-amber-950',
+          border: 'border-amber-150',
+          shadow: 'shadow-amber-100'
+        };
+      }
+      if (s.includes('sci')) {
+        return {
+          bg: 'from-yellow-250 to-amber-350',
+          text: 'text-amber-950',
+          border: 'border-yellow-200',
+          shadow: 'shadow-amber-100'
+        };
+      }
+      if (s.includes('eng')) {
+        return {
+          bg: 'from-orange-300 to-amber-350',
+          text: 'text-amber-950',
+          border: 'border-orange-200',
+          shadow: 'shadow-amber-100'
+        };
+      }
+      if (s.includes('comp') || s.includes('cod')) {
+        return {
+          bg: 'from-amber-350 to-orange-355',
+          text: 'text-amber-950',
+          border: 'border-amber-250',
+          shadow: 'shadow-amber-100'
+        };
+      }
+      if (s.includes('hist') || s.includes('soc')) {
+        return {
+          bg: 'from-yellow-250 to-amber-300',
+          text: 'text-amber-950',
+          border: 'border-yellow-150',
+          shadow: 'shadow-amber-100'
+        };
+      }
+      return {
+        bg: 'from-amber-250 to-yellow-250',
+        text: 'text-amber-950',
+        border: 'border-amber-150',
+        shadow: 'shadow-amber-100'
+      };
+    }
+
+    // Ocean theme (Minty crisp teal waves)
+    if (t === 'ocean') {
+      if (s.includes('math')) {
+        return {
+          bg: 'from-cyan-250 to-teal-350',
+          text: 'text-cyan-950',
+          border: 'border-cyan-200',
+          shadow: 'shadow-teal-100'
+        };
+      }
+      if (s.includes('sci')) {
+        return {
+          bg: 'from-teal-300 to-emerald-350',
+          text: 'text-teal-950',
+          border: 'border-teal-200',
+          shadow: 'shadow-teal-100'
+        };
+      }
+      if (s.includes('eng')) {
+        return {
+          bg: 'from-teal-150 to-indigo-250',
+          text: 'text-indigo-950',
+          border: 'border-teal-100',
+          shadow: 'shadow-teal-100'
+        };
+      }
+      if (s.includes('comp') || s.includes('cod')) {
+        return {
+          bg: 'from-cyan-350 to-blue-355',
+          text: 'text-blue-950',
+          border: 'border-cyan-250',
+          shadow: 'shadow-teal-100'
+        };
+      }
+      if (s.includes('hist') || s.includes('soc')) {
+        return {
+          bg: 'from-teal-200 to-amber-150',
+          text: 'text-teal-950',
+          border: 'border-teal-150',
+          shadow: 'shadow-teal-50'
+        };
+      }
+      return {
+        bg: 'from-teal-250 to-cyan-300',
+        text: 'text-teal-950',
+        border: 'border-teal-200',
+        shadow: 'shadow-teal-100'
+      };
+    }
+
+    // Peach theme (Creamy sweet apricot)
+    if (t === 'peach') {
+      if (s.includes('math')) {
+        return {
+          bg: 'from-orange-200 to-pink-200',
+          text: 'text-orange-950',
+          border: 'border-orange-100',
+          shadow: 'shadow-orange-50'
+        };
+      }
+      if (s.includes('sci')) {
+        return {
+          bg: 'from-emerald-150 to-orange-150',
+          text: 'text-orange-950',
+          border: 'border-emerald-100',
+          shadow: 'shadow-orange-50'
+        };
+      }
+      if (s.includes('eng')) {
+        return {
+          bg: 'from-pink-250 to-orange-250',
+          text: 'text-orange-950',
+          border: 'border-pink-150',
+          shadow: 'shadow-orange-50'
+        };
+      }
+      if (s.includes('comp') || s.includes('cod')) {
+        return {
+          bg: 'from-rose-250 to-orange-200',
+          text: 'text-orange-950',
+          border: 'border-rose-150',
+          shadow: 'shadow-orange-50'
+        };
+      }
+      if (s.includes('hist') || s.includes('soc')) {
+        return {
+          bg: 'from-amber-250 to-orange-250',
+          text: 'text-orange-950',
+          border: 'border-amber-155',
+          shadow: 'shadow-orange-50'
+        };
+      }
+      return {
+        bg: 'from-orange-200 to-pink-200',
+        text: 'text-orange-950',
+        border: 'border-orange-150',
+        shadow: 'shadow-orange-50'
+      };
+    }
+
+    // Default safety return
+    return {
+      bg: 'from-pink-400 to-rose-450',
+      text: 'text-white',
+      border: 'border-pink-300',
+      shadow: 'shadow-pink-200/50'
+    };
+  };
+
+  const style = getColors(subject, activeTheme);
+
+  return (
+    <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${style.bg} ${style.border} border-2 flex flex-col items-center justify-center relative shadow-md ${style.shadow} overflow-hidden font-sans select-none transition-all duration-300 hover:scale-105 active:scale-95`}>
+      {/* Glossy radial shine */}
+      <div className="absolute top-[-8px] right-[-8px] w-6 h-6 rounded-full bg-white/20 blur-[1px]"></div>
+      <div className="absolute bottom-[-10px] left-[-10px] w-8 h-8 rounded-full bg-white/10 blur-[1px]"></div>
+      
+      {/* Tiny star sticker badge decor */}
+      <div className="absolute top-1 right-2 text-[7px] opacity-75">✨</div>
+
+      {/* Stamp text */}
+      <div className="text-[8.5px] font-black tracking-widest opacity-80 uppercase mt-0.5 scale-90 text-white/80 filter drop-shadow-[0_1px_1px_rgba(0,0,0,0.12)]">
+        CH
+      </div>
+      
+      {/* Glossy Bubbly count */}
+      <span className={`text-2xl font-black ${style.text} tracking-tighter filter drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.19)] -mt-1`}>
+        {num}
+      </span>
+      
+      {/* Cute shiny circle glass spot */}
+      <div className="absolute top-1 left-2.5 w-1.5 h-1.5 rounded-full bg-white/70"></div>
+    </div>
+  );
+}
+
 export default function SubjectsView({ setTab, setSelectedChapter }: { setTab: (tab: string) => void, setSelectedChapter: (chapter: any) => void }) {
   const [chapters, setChapters] = useState<any[]>([]);
   const [filter, setFilter] = useState('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { userData, updateUserData } = useAppContext();
+  const { userData, user, updateUserData } = useAppContext();
   
   const [deletingChapter, setDeletingChapter] = useState<any | null>(null);
   const [deletingSubject, setDeletingSubject] = useState<string | null>(null);
@@ -24,13 +473,14 @@ export default function SubjectsView({ setTab, setSelectedChapter }: { setTab: (
   const subjects = ['All', ...(userData?.subjects || ['Math', 'Science', 'English', 'Computer', 'History'])];
 
   useEffect(() => {
-    const q = query(collection(db, 'chapters'), orderBy('createdAt', 'desc'));
+    if (!user) return;
+    const q = query(collection(db, 'chapters'), orderBy('createdAt', 'asc'));
     const unsub = onSnapshot(q, (snap) => {
       const data = snap.docs.map(document => ({ id: document.id, ...document.data() }));
       setChapters(data);
     });
     return () => unsub();
-  }, []);
+  }, [user]);
 
   const handleDeleteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,6 +542,12 @@ export default function SubjectsView({ setTab, setSelectedChapter }: { setTab: (
   };
 
   const filtered = filter === 'All' ? chapters : chapters.filter(c => c.subject === filter);
+
+  const getChapterNumber = (chapterId: string, subject: string) => {
+    const subjectChapters = chapters.filter(c => c.subject === subject);
+    const index = subjectChapters.findIndex(c => c.id === chapterId);
+    return index !== -1 ? index + 1 : 1;
+  };
 
   const handleAddSubject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -197,17 +653,15 @@ export default function SubjectsView({ setTab, setSelectedChapter }: { setTab: (
                 className="app-card rounded-2xl p-4 border flex items-center gap-4 hover:shadow-lg hover:-translate-y-0.5 transition-all w-full group relative"
               >
                 <div 
-                  className="w-16 h-16 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 text-indigo-500 flex items-center justify-center shrink-0 cursor-pointer border border-slate-200/50 dark:border-slate-700/50 hover:opacity-90 transition-opacity"
+                  className="shrink-0 cursor-pointer"
                   onClick={() => {
                     setSelectedChapter(chapter);
                     setTab('chapterDetails');
                   }}
                 >
-                  <img 
-                    src={chapter.coverImage || getChapterCoverImage(chapter.subject, chapter.title)} 
-                    alt={chapter.title} 
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
+                  <CuteChapterIcon 
+                    subject={chapter.subject} 
+                    num={getChapterNumber(chapter.id, chapter.subject)} 
                   />
                 </div>
                 
