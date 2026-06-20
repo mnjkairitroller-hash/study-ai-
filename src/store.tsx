@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth, db } from './lib/firebase';
-import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, updateDoc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { getLevelInfo } from './lib/utils';
 
@@ -51,6 +51,7 @@ interface AppContextType {
   markLessonComplete: (lessonId: string, pointsEarned: number) => Promise<void>;
   updateLessonProgress: (lessonId: string, progressSeconds: number) => Promise<void>;
   setDeletePin: (pin: string) => Promise<void>;
+  refreshUserData: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -98,7 +99,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               // Update last active in background
               updateDoc(userRef, { lastActive: new Date().toISOString(), streak: newStreak });
             }
-            
+
             setUserData({ ...data, streak: newStreak });
           } else {
             // Create initial user data
@@ -192,6 +193,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await updateUserData({ deletePin: pin });
   };
 
+  const refreshUserData = async () => {
+    if (!user) return;
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userRef);
+      if (userDoc.exists()) {
+        const data = userDoc.data() as UserData;
+        setUserData({ ...data, streak: data.streak || 1 });
+      }
+    } catch (err) {
+      console.error("Error refreshing data:", err);
+    }
+  };
+
   return (
     <AppContext.Provider value={{
       user,
@@ -203,7 +218,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setTheme,
       markLessonComplete,
       updateLessonProgress,
-      setDeletePin
+      setDeletePin,
+      refreshUserData
     }}>
       {children}
     </AppContext.Provider>

@@ -2,15 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../store';
 import { auth, db } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, where } from 'firebase/firestore';
-import { LogOut, Palette, Ticket, Shield, Lock, Calendar, CheckCircle2, Clock3, AlertTriangle, Sparkles, PlayCircle, Star, GraduationCap } from 'lucide-react';
+import { LogOut, Palette, Ticket, Shield, Lock, Calendar, CheckCircle2, Clock3, AlertTriangle, Sparkles, PlayCircle, Star, GraduationCap, RefreshCcw } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 
 export default function ProfileView() {
-  const { userData, user, setTheme, setDeletePin } = useAppContext();
+  const { userData, user, setTheme, setDeletePin, refreshUserData } = useAppContext();
   const [currentPinInput, setCurrentPinInput] = useState('');
   const [pinInput, setPinInput] = useState('');
   const [pinSaved, setPinSaved] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
   const [chapters, setChapters] = useState<any[]>([]);
   const [activeDayTab, setActiveDayTab] = useState<'today' | 'tomorrow' | 'dayAfter'>('today');
 
@@ -241,6 +242,17 @@ export default function ProfileView() {
       setPinInput('');
       setPinSaved(true);
       setTimeout(() => setPinSaved(false), 3000);
+    }
+  };
+
+  const handleSyncData = async () => {
+    setIsSyncing(true);
+    try {
+      await refreshUserData();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setTimeout(() => setIsSyncing(false), 800); // Small delay for UX
     }
   };
 
@@ -562,6 +574,25 @@ export default function ProfileView() {
                 ))}
               </div>
             )}
+          </div>
+
+          <div className="space-y-4 bg-slate-50/50 dark:bg-slate-900/10 p-5 rounded-[2rem] border border-slate-100 dark:border-slate-800/40">
+            <h3 className="font-bold text-lg flex items-center gap-2">
+              <RefreshCcw className={`text-blue-500 ${isSyncing ? 'animate-spin' : ''}`} />
+              Data Synchronization
+            </h3>
+            <div className="app-card rounded-2xl p-4 border space-y-3 text-left">
+               <p className="text-sm app-text-muted">Manually force an update of your profile points and lesson progress from the cloud if anything appears missing or out of sync.</p>
+               
+               <button 
+                  onClick={handleSyncData}
+                  disabled={isSyncing}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 active:scale-[0.99] text-blue-700 dark:text-blue-400 font-bold rounded-xl transition"
+               >
+                  <RefreshCcw size={18} className={isSyncing ? 'animate-spin' : ''} />
+                  {isSyncing ? "Syncing with Cloud..." : "Check & Sync Progress"}
+               </button>
+            </div>
           </div>
 
           <div className="pt-4">

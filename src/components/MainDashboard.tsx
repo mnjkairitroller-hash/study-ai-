@@ -174,8 +174,10 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
   // Load and initialize 9 realistic Indian classmate AI Competitors from localStorage
   useEffect(() => {
     if (!user) return;
-    const storageKey = 'gamified_study_ai_opponents_v4_9ai';
-    const saved = localStorage.getItem(storageKey);
+    const storageKey = 'gamified_study_ai_opponents_daily_v5';
+    const lastSeenKey = 'gamified_study_ai_last_seen_v5';
+    
+    let saved = localStorage.getItem(storageKey);
     let list = [];
     if (saved) {
       try {
@@ -186,21 +188,22 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
     }
 
     const DEFAULT_OPPONENTS = [
-      { id: 'ai_opp_1', displayName: 'Aditya Joshi', pointsOffset: 120, streak: 7, status: 'Reviewing Math Shortcuts 📐' },
-      { id: 'ai_opp_2', displayName: 'Priya Sharma', pointsOffset: 85, streak: 6, status: 'Online • Solving Physics MCQs ⚡' },
-      { id: 'ai_opp_3', displayName: 'Rohan Gupta', pointsOffset: 55, streak: 5, status: 'Solving Chemistry equations 🧪' },
-      { id: 'ai_opp_4', displayName: 'Sneha Patel', pointsOffset: 25, streak: 4, status: 'Reading English summaries 📖' },
-      { id: 'ai_opp_5', displayName: 'Vikram Malhotra', pointsOffset: -15, streak: 3, status: 'Active studying 📚' },
-      { id: 'ai_opp_6', displayName: 'Aanya Sen', pointsOffset: -45, streak: 3, status: 'Online • Ready to study ⚡' },
-      { id: 'ai_opp_7', displayName: 'Riya Verma', pointsOffset: -80, streak: 2, status: 'Completing Computer science worksheet 💻' },
-      { id: 'ai_opp_8', displayName: 'Kabir Dev', pointsOffset: -120, streak: 1, status: 'Solving Daily Brain Booster 🧠' },
-      { id: 'ai_opp_9', displayName: 'Ishaan Choudhury', pointsOffset: -170, streak: 1, status: 'Reading customized history notes 📜' }
+      { id: 'ai_opp_1', displayName: 'Aditya Joshi', pointsOffset: 80, streak: 7, status: 'Reviewing Math Shortcuts 📐' },
+      { id: 'ai_opp_2', displayName: 'Priya Sharma', pointsOffset: 65, streak: 6, status: 'Online • Solving Physics MCQs ⚡' },
+      { id: 'ai_opp_3', displayName: 'Rohan Gupta', pointsOffset: 45, streak: 5, status: 'Solving Chemistry equations 🧪' },
+      { id: 'ai_opp_4', displayName: 'Sneha Patel', pointsOffset: 35, streak: 4, status: 'Reading English summaries 📖' },
+      { id: 'ai_opp_5', displayName: 'Vikram Malhotra', pointsOffset: 15, streak: 3, status: 'Active studying 📚' },
+      { id: 'ai_opp_6', displayName: 'Aanya Sen', pointsOffset: -5, streak: 3, status: 'Online • Ready to study ⚡' },
+      { id: 'ai_opp_7', displayName: 'Riya Verma', pointsOffset: -20, streak: 2, status: 'Completing Computer science worksheet 💻' },
+      { id: 'ai_opp_8', displayName: 'Kabir Dev', pointsOffset: -35, streak: 1, status: 'Solving Daily Brain Booster 🧠' },
+      { id: 'ai_opp_9', displayName: 'Ishaan Choudhury', pointsOffset: -50, streak: 1, status: 'Reading customized history notes 📜' }
     ];
 
     if (!list || list.length < 9) {
-      const userPts = userData?.points || 0;
+      // Base points centered around 250 so they are between 200 and 300
+      const basePoints = 250;
       list = DEFAULT_OPPONENTS.map(opp => {
-        const startPoints = Math.max(15, userPts + opp.pointsOffset);
+        const startPoints = Math.max(15, basePoints + opp.pointsOffset);
         const { level: calculatedLevel } = getLevelInfo(startPoints);
         return {
           id: opp.id,
@@ -213,6 +216,55 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
         };
       });
       localStorage.setItem(storageKey, JSON.stringify(list));
+      localStorage.setItem(lastSeenKey, Date.now().toString());
+    } else {
+      // Offline/Daily point progression logic
+      const lastSeen = localStorage.getItem(lastSeenKey);
+      const minus60PatchKey = 'gamified_study_ai_minus_60_v5_patch';
+      const minus60Applied = localStorage.getItem(minus60PatchKey);
+      
+      if (!minus60Applied) {
+         list = list.map((opp: any) => {
+            const newPoints = Math.max(15, opp.points - 60);
+            const { level: newLvl } = getLevelInfo(newPoints);
+            return {
+               ...opp,
+               points: newPoints,
+               level: newLvl
+            };
+         });
+         localStorage.setItem(storageKey, JSON.stringify(list));
+         localStorage.setItem(minus60PatchKey, 'true');
+      }
+
+      if (lastSeen) {
+        const now = Date.now();
+        const daysPassed = Math.floor((now - parseInt(lastSeen, 10)) / (1000 * 60 * 60 * 24));
+        
+        if (daysPassed > 0) {
+          // Add 30 to 100 points per day passed for each competitor
+          list = list.map((opp: any) => {
+            const dailyPointsOptions = [30, 45, 60, 75, 100];
+            let pointsToGain = 0;
+            // Cap simulation to max 7 days to avoid extreme inflation if they return after months
+            for (let i = 0; i < Math.min(daysPassed, 7); i++) {
+               pointsToGain += dailyPointsOptions[Math.floor(Math.random() * dailyPointsOptions.length)];
+            }
+            const newPoints = opp.points + pointsToGain;
+            const { level: newLvl } = getLevelInfo(newPoints);
+            return {
+              ...opp,
+              points: newPoints,
+              level: newLvl,
+              streak: opp.streak + Math.min(daysPassed, 7) // Increment streak
+            };
+          });
+          localStorage.setItem(storageKey, JSON.stringify(list));
+          localStorage.setItem(lastSeenKey, now.toString());
+        }
+      } else {
+        localStorage.setItem(lastSeenKey, Date.now().toString());
+      }
     }
     setAiCompetitors(list);
   }, [user]);
@@ -273,6 +325,17 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
               timestamp: Date.now()
             });
           }
+        } else if (roll < 0.92) {
+          // Failed a task or lost points
+          const pointsLostPool = [10, 15, 20, 30];
+          const lost = pointsLostPool[Math.floor(Math.random() * pointsLostPool.length)];
+          const newPts = Math.max(15, copy.points - lost);
+          const { level: newLevel } = getLevelInfo(newPts);
+          
+          copy.points = newPts;
+          copy.level = newLevel;
+          copy.lastActive = Date.now();
+          copy.status = `Failed a difficult quiz... -${lost} Pts 📉`;
         } else {
           copy.status = 'Online • Ready to compete';
         }
@@ -281,7 +344,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
       });
 
       setAiCompetitors(updatedList);
-      localStorage.setItem('gamified_study_ai_opponents_v4_9ai', JSON.stringify(updatedList));
+      localStorage.setItem('gamified_study_ai_opponents_daily_v5', JSON.stringify(updatedList));
     }, 40000);
 
     return () => clearInterval(interval);
@@ -1005,7 +1068,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
                          if (setPlayingVideo) setPlayingVideo(video);
                          setTab('player');
                       }}
-                      className="app-card rounded-3xl border-[3px] border-indigo-200/70 dark:border-indigo-500/30 overflow-hidden cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-400 hover:shadow-xl hover:shadow-indigo-500/20 transition-all duration-300 group bg-white dark:bg-slate-900/50 flex flex-col"
+                      className="app-card rounded-3xl border-4 border-amber-300 dark:border-amber-700 overflow-hidden cursor-pointer hover:border-amber-400 dark:hover:border-amber-500 hover:shadow-2xl hover:shadow-amber-500/30 transition-all duration-300 group bg-white dark:bg-slate-900 flex flex-col relative"
                     >
                       {/* Video Thumbnail (16:9 Aspect Ratio like YouTube) - Flush with top/sides */}
                       <div className="relative aspect-video w-full bg-slate-900 dark:bg-slate-950 overflow-hidden">
