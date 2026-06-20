@@ -565,7 +565,8 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
                 subject: subject,
                 chapterTitle: chapter.title,
                 partNumber: video.partIdx + 1,
-                chapterId: chapter.id
+                chapterId: chapter.id,
+                isExtraClass: activeVideos.length >= 1 // first video is index 0 -> false, second video index 1 -> true
               });
             } else {
               break;
@@ -642,34 +643,40 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
 
       for (const v of currentRoutine.videos) {
         if (!completed.includes(v.id)) {
+          // If it's an extra class, do not apply a deduction, but still add to missed list conceptually (optional) or just bypass penalty
           const duration = v.duration || 1200;
-          // Apply penalty rule:
-          // Less than 30 minutes video incomplete -> -30 points
-          // More than 30 minutes video incomplete -> -40 points
-          const penalty = duration >= 1800 ? 40 : 30;
-          missed.push({
-            id: v.id,
-            title: v.title,
-            duration: duration,
-            subject: v.subject || 'Subject'
-          });
-          totalDeduction += penalty;
+          let penalty = duration >= 1800 ? 40 : 30;
+
+          if (v.isExtraClass) {
+            penalty = 0; // No penalty for skipping extra classes
+          }
+
+          if (penalty > 0) {
+            missed.push({
+              id: v.id,
+              title: v.title,
+              duration: duration,
+              subject: v.subject || 'Subject'
+            });
+            totalDeduction += penalty;
+          }
         }
       }
 
       // 3. Generate today's new routine with shift rules:
-      // Carry over any uncompleted (missed) lessons from yesterday's routine
-      const shiftedVideos = currentRoutine.videos.filter(v => !completed.includes(v.id));
-      const shiftedSubjects = shiftedVideos.map(v => v.subject);
-
       // Generate next uncompleted lessons from the database
       const freshRoutine = generateRoutine();
+      const freshSubjects = freshRoutine.map(v => v.subject);
 
-      // Combine shifted lessons and fresh lessons for fully completed subjects
-      const combinedRoutine = [...shiftedVideos];
-      freshRoutine.forEach(freshVid => {
-        if (!shiftedSubjects.includes(freshVid.subject)) {
-          combinedRoutine.push(freshVid);
+      // Carry over any uncompleted (missed) lessons from yesterday's routine ONLY if the subject isn't scheduled today
+      const shiftedVideos = currentRoutine.videos.filter(v => !completed.includes(v.id));
+      
+      const combinedRoutine = [...freshRoutine];
+      shiftedVideos.forEach(shifted => {
+        if (!freshSubjects.includes(shifted.subject)) {
+          // If a subject was completely skipped for today (e.g., English on Tuesday), 
+          // but the user missed it previously, we carry it over as a compulsory catch-up task.
+          combinedRoutine.push({ ...shifted, isExtraClass: false });
         }
       });
 
