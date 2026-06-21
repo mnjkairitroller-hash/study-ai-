@@ -87,20 +87,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const today = new Date().toDateString();
             const lastActiveDate = new Date(data.lastActive || new Date().toISOString()).toDateString();
             
-            let newStreak = data.streak;
+            let newStreak = data.streak || 1;
+            let currentPoints = data.points || 0;
+            let currentLevel = data.level || 1;
+
             if (today !== lastActiveDate) {
               const yesterday = new Date();
               yesterday.setDate(yesterday.getDate() - 1);
+              
+              const updates: any = { lastActive: new Date().toISOString() };
+
               if (lastActiveDate === yesterday.toDateString()) {
                 newStreak += 1; // Increment streak
+                updates.streak = newStreak;
               } else {
                 newStreak = 1; // Reset streak
+                updates.streak = newStreak;
+                
+                const missedDaysMs = new Date().getTime() - new Date(data.lastActive || new Date().toISOString()).getTime();
+                const missedDays = Math.max(1, Math.floor(missedDaysMs / (1000 * 60 * 60 * 24)));
+                
+                if (missedDays > 1) {
+                  // Subtract points for missing days
+                  const pointsToLose = Math.min(missedDays * 30, 200); // 30 per day, max 200 decrease
+                  currentPoints = Math.max(10, currentPoints - pointsToLose); // Never drop below 10
+                  const { level: calculatedLevel } = getLevelInfo(currentPoints);
+                  currentLevel = Math.max(currentLevel, calculatedLevel); // Never decrease level
+                  
+                  updates.points = currentPoints;
+                  updates.level = currentLevel;
+                }
               }
-              // Update last active in background
-              updateDoc(userRef, { lastActive: new Date().toISOString(), streak: newStreak });
+              
+              // Update last active and any penalties in background
+              updateDoc(userRef, updates);
             }
 
-            setUserData({ ...data, streak: newStreak });
+            setUserData({ ...data, streak: newStreak, points: currentPoints, level: currentLevel });
           } else {
             // Create initial user data
             const initialData: UserData = {
@@ -138,9 +161,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addPoints = async (amount: number) => {
     if (!userData || !user) return;
-    const newPoints = userData.points + amount;
-    const { level: newLevel } = getLevelInfo(newPoints);
-    await updateUserData({ points: newPoints, level: newLevel });
+    const newPoints = Math.max(10, userData.points + amount);
+    const { level: calculatedLevel } = getLevelInfo(newPoints);
+    const finalLevel = Math.max(userData.level, calculatedLevel); // Never decrease level
+    await updateUserData({ points: newPoints, level: finalLevel });
   };
 
   const redeemReward = async (cost: number, rewardId: string, rewardTitle: string) => {
@@ -154,8 +178,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       coupon: couponCode,
     };
     const currentHistory = userData.redemptionHistory || [];
+    
+    // Points go down, but level never goes down
+    const newPoints = Math.max(0, userData.points - cost);
+    
     await updateUserData({
-      points: userData.points - cost,
+      points: newPoints,
       rewards: [...userData.rewards, couponCode],
       redemptionHistory: [...currentHistory, newRedemption],
     });
