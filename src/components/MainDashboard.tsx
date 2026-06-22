@@ -966,7 +966,8 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
                 return;
               }
               if (overridePinInput === userData.deletePin) {
-                await markLessonComplete(overrideTargetQuest.video.id, parseInt(overrideTargetQuest.reward, 10));
+                const vidDuration = overrideTargetQuest?.video?.duration || 0;
+                await markLessonComplete(overrideTargetQuest.video.id, parseInt(overrideTargetQuest.reward, 10), vidDuration);
                 setOverrideTargetQuest(null);
                 setOverridePinInput('');
               } else {

@@ -258,7 +258,7 @@ export default function VideoPlayerView({ video, setTab, hasActiveChapter }: { v
                   setIsPlaying(false);
                   setIsCompleted(true);
                   if (!isAlreadyCompleted) {
-                    markLessonComplete(video.id, duration > 3600 ? 70 : duration < 1800 ? 30 : 40);
+                    markLessonComplete(video.id, duration > 3600 ? 70 : duration < 1800 ? 30 : 40, duration);
                     confetti({
                       particleCount: 100,
                       spread: 80,
@@ -395,7 +395,7 @@ export default function VideoPlayerView({ video, setTab, hasActiveChapter }: { v
 
     setIsCompleted(true);
     const pointsToAward = duration > 3600 ? 70 : duration < 1800 ? 30 : 40;
-    await markLessonComplete(video.id, pointsToAward);
+    await markLessonComplete(video.id, pointsToAward, duration);
   };
 
   const formatTime = (seconds: number) => {

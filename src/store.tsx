@@ -49,7 +49,7 @@ interface AppContextType {
   addPoints: (amount: number) => Promise<void>;
   redeemReward: (cost: number, rewardId: string, rewardTitle: string) => Promise<void>;
   setTheme: (theme: string) => Promise<void>;
-  markLessonComplete: (lessonId: string, pointsEarned: number) => Promise<void>;
+  markLessonComplete: (lessonId: string, pointsEarned: number, durationSeconds?: number) => Promise<void>;
   updateLessonProgress: (lessonId: string, progressSeconds: number) => Promise<void>;
   setDeletePin: (pin: string) => Promise<void>;
   refreshUserData: () => Promise<void>;
@@ -200,7 +200,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await updateUserData({ theme });
   };
 
-  const markLessonComplete = async (lessonId: string, pointsEarned: number) => {
+  const markLessonComplete = async (lessonId: string, pointsEarned: number, durationSeconds?: number) => {
     if (!userData || !user) return;
     
     let currentDailyCount = userData.dailyLessonsCount || 0;
@@ -210,17 +210,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       currentDailyCount = 0;
     }
     
+    // If a video is nearly 2 hours (> 90 mins / 5400 secs), it counts as 2 daily lessons
+    const countToAdd = (durationSeconds && durationSeconds >= 5400) ? 2 : 1;
+    
     if (!userData.completedLessons.includes(lessonId)) {
       await updateUserData({
         completedLessons: [...userData.completedLessons, lessonId],
-        dailyLessonsCount: currentDailyCount + 1,
+        dailyLessonsCount: currentDailyCount + countToAdd,
         lastActive: new Date().toISOString()
       });
       await addPoints(pointsEarned);
     } else {
       // Still consider it daily reading if practiced
       await updateUserData({
-        dailyLessonsCount: currentDailyCount + 1,
+        dailyLessonsCount: currentDailyCount + countToAdd,
         lastActive: new Date().toISOString()
       });
       await addPoints(pointsEarned);
