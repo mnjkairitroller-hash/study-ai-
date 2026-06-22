@@ -304,7 +304,9 @@ export default function ChapterDetailsView({ chapter, setTab, setPlayingVideo }:
 
     setCompleteLoading(true);
     try {
-      await markLessonComplete(completeVideoWithPin.id, 50);
+      const vidDuration = completeVideoWithPin.duration || 0;
+      const points = vidDuration > 3600 ? 70 : vidDuration < 1800 ? 30 : 40;
+      await markLessonComplete(completeVideoWithPin.id, points);
       setCompleteVideoWithPin(null);
       setCompletePin('');
     } catch (err) {

@@ -17,6 +17,7 @@ export interface UserData {
   lessonProgress?: Record<string, number>; // Maps lesson ID to seconds watched
   deletePin?: string;
   subjects?: string[];
+  dailyLessonsCount?: number;
   currentRoutine?: {
     date: string;
     videos: { id: string; title: string; videoUrl: string; subject: string; duration?: number }[];
@@ -95,11 +96,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               const yesterday = new Date();
               yesterday.setDate(yesterday.getDate() - 1);
               
-              const updates: any = { lastActive: new Date().toISOString() };
-
+              const updates: any = { lastActive: new Date().toISOString(), dailyLessonsCount: 0 };
+              
               if (lastActiveDate === yesterday.toDateString()) {
                 newStreak += 1; // Increment streak
                 updates.streak = newStreak;
+                
+                // Penalize if they didn't complete 2 lessons yesterday
+                if ((data.dailyLessonsCount || 0) < 2) {
+                  currentPoints = Math.max(10, currentPoints - 35); // 35 point penalty
+                  updates.points = currentPoints;
+                }
               } else {
                 newStreak = 1; // Reset streak
                 updates.streak = newStreak;
@@ -108,8 +115,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const missedDays = Math.max(1, Math.floor(missedDaysMs / (1000 * 60 * 60 * 24)));
                 
                 if (missedDays > 1) {
-                  // Subtract points for missing days
-                  const pointsToLose = Math.min(missedDays * 30, 200); // 30 per day, max 200 decrease
+                  // Subtract points for missing days + missed lectures rule
+                  const pointsToLose = Math.min(missedDays * 35, 250); // 35 per day
                   currentPoints = Math.max(10, currentPoints - pointsToLose); // Never drop below 10
                   const { level: calculatedLevel } = getLevelInfo(currentPoints);
                   currentLevel = Math.max(currentLevel, calculatedLevel); // Never decrease level
@@ -195,9 +202,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const markLessonComplete = async (lessonId: string, pointsEarned: number) => {
     if (!userData || !user) return;
+    
+    let currentDailyCount = userData.dailyLessonsCount || 0;
+    const today = new Date().toDateString();
+    const lastActiveDate = new Date(userData.lastActive || new Date().toISOString()).toDateString();
+    if (today !== lastActiveDate) {
+      currentDailyCount = 0;
+    }
+    
     if (!userData.completedLessons.includes(lessonId)) {
       await updateUserData({
         completedLessons: [...userData.completedLessons, lessonId],
+        dailyLessonsCount: currentDailyCount + 1,
+        lastActive: new Date().toISOString()
+      });
+      await addPoints(pointsEarned);
+    } else {
+      // Still consider it daily reading if practiced
+      await updateUserData({
+        dailyLessonsCount: currentDailyCount + 1,
+        lastActive: new Date().toISOString()
       });
       await addPoints(pointsEarned);
     }

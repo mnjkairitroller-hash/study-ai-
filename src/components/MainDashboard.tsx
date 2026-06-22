@@ -343,6 +343,21 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
         return copy;
       });
 
+      // MANIPULATE LEADERBOARD SO USER IS RARELY 1ST (10% chance to allow user to be 1st)
+      if (userData && Math.random() < 0.90) {
+        let maxAIPoints = Math.max(...updatedList.map(c => c.points));
+        if (userData.points >= maxAIPoints) {
+          // Identify the AI with the highest current points
+          const topAiIndex = updatedList.findIndex(c => c.points === maxAIPoints);
+          if (topAiIndex !== -1) {
+             const pointsNeededToPass = (userData.points - maxAIPoints) + Math.floor(Math.random() * 50) + 15;
+             updatedList[topAiIndex].points += pointsNeededToPass;
+             const { level: newLevel } = getLevelInfo(updatedList[topAiIndex].points);
+             updatedList[topAiIndex].level = newLevel;
+          }
+        }
+      }
+
       setAiCompetitors(updatedList);
       localStorage.setItem('gamified_study_ai_opponents_daily_v5', JSON.stringify(updatedList));
     }, 40000);
@@ -495,8 +510,8 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
       await addPoints(1);
     } else {
       setClass8QuizIncorrectScore(prev => prev + 1);
-      setClass8PointsNet(prev => prev - 1);
-      await addPoints(-1);
+      setClass8PointsNet(prev => prev + 0);
+      await addPoints(0);
     }
   };
 
@@ -1144,7 +1159,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
                 </h3>
               </div>
               <div className="bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest flex items-center gap-1">
-                <Sparkles size={11} /> +1 / -1 Pt
+                <Sparkles size={11} /> +1 / +0 Pt
               </div>
             </div>
 
@@ -1216,7 +1231,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
                         </li>
                         <li className="flex items-center gap-2">
                           <Check size={14} className="text-red-500" />
-                          <span>Every Wrong answer deducts <span className="text-red-500 font-black">-1 Point</span></span>
+                          <span>Every Wrong answer deducts <span className="text-red-500 font-black">0 Points</span></span>
                         </li>
                       </ul>
                     </div>
@@ -1331,7 +1346,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
                               {class8QuizSelectedOpt === currentQuizQuestion.correct ? (
                                 <span className="text-emerald-500 flex items-center gap-1">🌟 Correct! (+1 Point)</span>
                               ) : (
-                                <span className="text-red-500 flex items-center gap-1">❌ Incorrect! (-1 Point)</span>
+                                <span className="text-red-500 flex items-center gap-1">❌ Incorrect! (0 Points)</span>
                               )}
                             </div>
                             <p className="leading-relaxed opacity-90">{currentQuizQuestion.explanation}</p>
