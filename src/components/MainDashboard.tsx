@@ -155,6 +155,7 @@ const STUDY_STATUSES = [
 export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (tab: string) => void, setPlayingVideo?: (vid: any) => void }) {
   const { userData, user, addPoints, updateUserData, markLessonComplete } = useAppContext();
   const [chapters, setChapters] = useState<any[]>([]);
+  const [chaptersLoaded, setChaptersLoaded] = useState(false);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [checkingRoutine, setCheckingRoutine] = useState(false);
   const [penaltyDetails, setPenaltyDetails] = useState<{
@@ -601,8 +602,10 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
     const unsub = onSnapshot(q, (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setChapters(data);
+      setChaptersLoaded(true);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'chapters');
+      setChaptersLoaded(true);
     });
     return () => unsub();
   }, [user]);
@@ -866,6 +869,11 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
     : todayRoutine).filter(video => !userData?.completedLessons?.includes(video.id));
 
   const activeRoutineVideos = activeRoutineVideosRaw.map((video: any) => {
+    // If chapters are still loading, default to showing the cached video metadata safely 
+    // to prevent unwanted visual flicker before firestore data arrives.
+    if (!chaptersLoaded) {
+      return video;
+    }
     const foundChapter = chapters.find((ch: any) => ch.id === video.chapterId);
     if (foundChapter && foundChapter.videos) {
       const foundVideo = foundChapter.videos.find((v: any) => v.id === video.id);
@@ -878,8 +886,10 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
         };
       }
     }
-    return video;
-  });
+    // If chapters have loaded and this video is no longer found in the library database under its chapter,
+    // we return null so it gets hidden instantly from the Tuition Videos card and Missions.
+    return null;
+  }).filter(Boolean);
 
   const quests = activeRoutineVideos.length > 0 
     ? activeRoutineVideos.map((video, idx) => {
