@@ -861,9 +861,25 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
 
   const todayRoutine = generateRoutine().filter(video => !userData?.completedLessons?.includes(video.id));
 
-  const activeRoutineVideos = ((userData?.currentRoutine && userData.currentRoutine.date === new Date().toDateString())
+  const activeRoutineVideosRaw = ((userData?.currentRoutine && userData.currentRoutine.date === new Date().toDateString())
     ? userData.currentRoutine.videos.filter((video: any) => !video.isShifted)
     : todayRoutine).filter(video => !userData?.completedLessons?.includes(video.id));
+
+  const activeRoutineVideos = activeRoutineVideosRaw.map((video: any) => {
+    const foundChapter = chapters.find((ch: any) => ch.id === video.chapterId);
+    if (foundChapter && foundChapter.videos) {
+      const foundVideo = foundChapter.videos.find((v: any) => v.id === video.id);
+      if (foundVideo) {
+        return {
+          ...video,
+          title: foundVideo.title,
+          videoUrl: foundVideo.videoUrl,
+          chapterTitle: foundChapter.title
+        };
+      }
+    }
+    return video;
+  });
 
   const quests = activeRoutineVideos.length > 0 
     ? activeRoutineVideos.map((video, idx) => {
