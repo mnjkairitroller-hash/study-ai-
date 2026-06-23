@@ -213,9 +213,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // If a video is nearly 2 hours (> 90 mins / 5400 secs), it counts as 2 daily lessons
     const countToAdd = (durationSeconds && durationSeconds >= 5400) ? 2 : 1;
     
-    if (!userData.completedLessons.includes(lessonId)) {
+    const completedList = userData.completedLessons || [];
+    if (!completedList.includes(lessonId)) {
       await updateUserData({
-        completedLessons: [...userData.completedLessons, lessonId],
+        completedLessons: [...completedList, lessonId],
         dailyLessonsCount: currentDailyCount + countToAdd,
         lastActive: new Date().toISOString()
       });
