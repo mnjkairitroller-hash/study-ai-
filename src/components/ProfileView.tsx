@@ -4,9 +4,10 @@ import { auth, db } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, where } from 'firebase/firestore';
 import { LogOut, Palette, Ticket, Shield, Lock, Calendar, CheckCircle2, Clock3, AlertTriangle, Sparkles, PlayCircle, Star, GraduationCap, RefreshCcw } from 'lucide-react';
 import { signOut } from 'firebase/auth';
+import { getLevelInfo } from '../lib/utils';
 
 export default function ProfileView() {
-  const { userData, user, setTheme, setDeletePin, refreshUserData } = useAppContext();
+  const { userData, user, setTheme, setDeletePin, refreshUserData, updateUserData } = useAppContext();
   const [currentPinInput, setCurrentPinInput] = useState('');
   const [pinInput, setPinInput] = useState('');
   const [pinSaved, setPinSaved] = useState(false);
@@ -14,6 +15,13 @@ export default function ProfileView() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [chapters, setChapters] = useState<any[]>([]);
   const [activeDayTab, setActiveDayTab] = useState<'today' | 'tomorrow' | 'dayAfter'>('today');
+
+  // Points Adjustment States
+  const [adjustPointsPinInput, setAdjustPointsPinInput] = useState('');
+  const [pointsAmountInput, setPointsAmountInput] = useState('');
+  const [adjustAction, setAdjustAction] = useState<'increase' | 'decrease'>('increase');
+  const [adjustError, setAdjustError] = useState('');
+  const [adjustSuccess, setAdjustSuccess] = useState('');
 
   const themes = [
     { id: 'slate', name: 'Classic Slate', color: 'bg-slate-900 border-slate-700' },
@@ -468,6 +476,135 @@ export default function ProfileView() {
                   <span className="text-xs font-bold leading-tight text-center">{t.name}</span>
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* 🪙 Parent Points Controller Card */}
+          <div className="space-y-4 bg-slate-50/50 dark:bg-slate-900/10 p-5 rounded-[2rem] border border-slate-100 dark:border-slate-800/40">
+            <h3 className="font-bold text-lg flex items-center gap-2">
+              <Sparkles className="text-yellow-500 animate-pulse text-left animate-duration-1000" />
+              Parent/Teacher Points Controller
+            </h3>
+            <div className="app-card rounded-2xl p-4 border space-y-4 text-left">
+              <p className="text-sm app-text-muted">
+                Increase or decrease student's points directly. The student's explorer levels will automatically update on the dashboard and system.
+              </p>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAdjustAction('increase')}
+                  className={`flex-1 py-1.5 rounded-xl font-bold text-xs transition-all ${
+                    adjustAction === 'increase'
+                      ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/10'
+                      : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  ➕ Increase Points
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdjustAction('decrease')}
+                  className={`flex-1 py-1.5 rounded-xl font-bold text-xs transition-all ${
+                    adjustAction === 'decrease'
+                      ? 'bg-amber-500 text-white shadow-md shadow-amber-500/10'
+                      : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  ➖ Decrease Points
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                    Points Amount
+                  </label>
+                  <input
+                    type="text"
+                    pattern="[0-9]*"
+                    inputMode="numeric"
+                    placeholder="e.g. 100"
+                    min={1}
+                    value={pointsAmountInput}
+                    onChange={(e) => {
+                      setAdjustError('');
+                      setAdjustSuccess('');
+                      setPointsAmountInput(e.target.value.replace(/\D/g, ''));
+                    }}
+                    className="w-full bg-slate-50 dark:bg-slate-850 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                    Teacher PIN
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="••••• •"
+                    maxLength={6}
+                    value={adjustPointsPinInput}
+                    onChange={(e) => {
+                      setAdjustError('');
+                      setAdjustSuccess('');
+                      setAdjustPointsPinInput(e.target.value.replace(/\D/g, ''));
+                    }}
+                    className="w-full bg-slate-50 dark:bg-slate-850 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono tracking-widest text-sm"
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={async () => {
+                  setAdjustError('');
+                  setAdjustSuccess('');
+                  if (!userData?.deletePin) {
+                    setAdjustError('Please set a Teacher PIN first in the form below! 🔒');
+                    return;
+                  }
+                  if (adjustPointsPinInput !== userData.deletePin) {
+                    setAdjustError('Incorrect Teacher PIN / Password! ❌');
+                    return;
+                  }
+                  const amount = parseInt(pointsAmountInput, 10);
+                  if (isNaN(amount) || amount <= 0) {
+                    setAdjustError('Please specify a valid positive points amount! 🔢');
+                    return;
+                  }
+
+                  try {
+                    const adjustment = adjustAction === 'increase' ? amount : -amount;
+                    const newPoints = Math.max(0, (userData.points || 0) + adjustment);
+                    const { level: newLevel } = getLevelInfo(newPoints);
+
+                    await updateUserData({
+                      points: newPoints,
+                      level: newLevel
+                    });
+
+                    setAdjustSuccess(`Successfully ${adjustAction === 'increase' ? 'added' : 'subtracted'} ${amount} points! New Level: ${newLevel} 🎉`);
+                    setPointsAmountInput('');
+                    setAdjustPointsPinInput('');
+                  } catch (err) {
+                    console.error(err);
+                    setAdjustError('Failed to update points.');
+                  }
+                }}
+                className="w-full py-2.5 bg-indigo-650 hover:bg-indigo-700 active:scale-[0.99] text-white font-bold rounded-xl transition text-xs shadow-md shadow-indigo-650/10 cursor-pointer font-sans"
+              >
+                Apply Points Adjustment
+              </button>
+
+              {adjustError && (
+                <p className="text-red-500 text-xs font-bold text-center bg-red-50 dark:bg-red-950/20 py-2 rounded-xl border border-red-100 dark:border-red-900/40">
+                  {adjustError}
+                </p>
+              )}
+              {adjustSuccess && (
+                <p className="text-emerald-500 text-xs font-bold text-center bg-emerald-50 dark:bg-emerald-950/20 py-2 rounded-xl border border-emerald-100 dark:border-emerald-900/40">
+                  {adjustSuccess}
+                </p>
+              )}
             </div>
           </div>
 

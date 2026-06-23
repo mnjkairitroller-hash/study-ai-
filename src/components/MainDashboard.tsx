@@ -4,7 +4,7 @@ import { collection, query, orderBy, onSnapshot, limit, where } from 'firebase/f
 import { handleFirestoreError, OperationType } from '../lib/firebase';
 import { useAppContext } from '../store';
 import { getLevelInfo } from '../lib/utils';
-import { Flame, PlayCircle, Target, CheckCircle2, Trophy, Sparkles, BookHeart, BrainCircuit, Award, Users, Calendar, HelpCircle, Check, AlertCircle, X, RotateCcw, ChevronRight, BookOpen, MoreVertical, Clock } from 'lucide-react';
+import { Flame, PlayCircle, Target, CheckCircle2, Trophy, Sparkles, BookHeart, BrainCircuit, Award, Users, Calendar, HelpCircle, Check, AlertCircle, X, RotateCcw, ChevronRight, BookOpen, MoreVertical, Clock, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import mascotImg from '../assets/images/cute_study_mascot_1781752313835.jpg';
 import confetti from 'canvas-confetti';
@@ -177,6 +177,11 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
   const [shiftPinInput, setShiftPinInput] = useState('');
   const [shiftError, setShiftError] = useState('');
 
+  // Delete/Remove Video from Today's Routine States
+  const [deleteTargetVideo, setDeleteTargetVideo] = useState<any | null>(null);
+  const [deletePinInput, setDeletePinInput] = useState('');
+  const [deleteErrorMsg, setDeleteErrorMsg] = useState('');
+
   const [activeMenuVideoId, setActiveMenuVideoId] = useState<string | null>(null);
 
   const handleShiftVideo = async (videoId: string, e?: React.MouseEvent) => {
@@ -202,6 +207,28 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
     setAiNotification({
       message: `Video shifted! 🕒`,
       subMessage: `This lesson has been rescheduled to tomorrow. Timetable adjusted accordingly!`,
+      timestamp: Date.now()
+    });
+  };
+
+  const handleDeleteRoutineVideo = async (videoId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!userData || !userData.currentRoutine) return;
+    
+    // Filter out this video completely from currentRoutine.videos
+    const updatedVideos = userData.currentRoutine.videos.filter((v: any) => v.id !== videoId);
+    
+    await updateUserData({
+      currentRoutine: {
+        ...userData.currentRoutine,
+        videos: updatedVideos
+      }
+    });
+
+    // Also show a toast notification
+    setAiNotification({
+      message: `Video removed! 🗑️`,
+      subMessage: `This lesson has been removed from today's routine successfully.`,
       timestamp: Date.now()
     });
   };
@@ -874,19 +901,32 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
     if (!chaptersLoaded) {
       return video;
     }
-    const foundChapter = chapters.find((ch: any) => ch.id === video.chapterId);
-    if (foundChapter && foundChapter.videos) {
-      const foundVideo = foundChapter.videos.find((v: any) => v.id === video.id);
-      if (foundVideo) {
-        return {
-          ...video,
-          title: foundVideo.title,
-          videoUrl: foundVideo.videoUrl,
-          chapterTitle: foundChapter.title
-        };
+
+    // Search across ALL chapters to locate this lesson/video securely (by ID)
+    let foundVideo: any = null;
+    let foundChapter: any = null;
+    for (const ch of chapters) {
+      if (ch.videos) {
+        const matchingVid = ch.videos.find((v: any) => v.id === video.id);
+        if (matchingVid) {
+          foundVideo = matchingVid;
+          foundChapter = ch;
+          break;
+        }
       }
     }
-    // If chapters have loaded and this video is no longer found in the library database under its chapter,
+
+    if (foundVideo && foundChapter) {
+      return {
+        ...video,
+        title: foundVideo.title,
+        videoUrl: foundVideo.videoUrl,
+        chapterTitle: foundChapter.title,
+        subject: foundChapter.subject || video.subject
+      };
+    }
+    
+    // If chapters have loaded and this video is no longer found anywhere in the library database,
     // we return null so it gets hidden instantly from the Tuition Videos card and Missions.
     return null;
   }).filter(Boolean);
@@ -1265,6 +1305,99 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
         </div>
       )}
 
+      {deleteTargetVideo && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[70] flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-red-200 dark:border-red-900/50 p-6 sm:p-8 max-w-sm w-full relative shadow-2xl text-center"
+          >
+            <div className="mx-auto w-14 h-14 rounded-2xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 flex items-center justify-center mb-4">
+              <Trash2 className="text-red-600 dark:text-red-400" size={28} />
+            </div>
+
+            <span className="text-[10px] font-black uppercase tracking-widest text-red-500 bg-red-50 dark:bg-red-950/40 px-3 py-1 rounded-full">
+              Remove Video
+            </span>
+            <h3 className="font-sans font-black text-lg text-slate-900 dark:text-white mt-3">
+              Remove from Today's Routine?
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1.5 leading-relaxed text-center">
+              This will remove this lesson video from today's routine tasks.
+            </p>
+
+            <div className="my-4 p-3 bg-red-50/20 dark:bg-red-950/10 rounded-2xl border border-red-100/50 dark:border-red-900/10 text-left">
+              <span className="text-[9px] font-extrabold text-red-500 uppercase tracking-widest block">
+                {deleteTargetVideo.subject || 'Subject'}
+              </span>
+              <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-snug line-clamp-2">
+                {deleteTargetVideo.title}
+              </h4>
+            </div>
+
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setDeleteErrorMsg('');
+              if (!userData?.deletePin) {
+                setDeleteErrorMsg('Teacher PIN is not set! Set it in Profile Settings. 🔒');
+                return;
+              }
+              if (deletePinInput === userData.deletePin) {
+                await handleDeleteRoutineVideo(deleteTargetVideo.id);
+                setDeleteTargetVideo(null);
+                setDeletePinInput('');
+              } else {
+                setDeleteErrorMsg('Incorrect Profile Password / PIN! ❌');
+              }
+            }} className="space-y-4">
+              <div className="text-left">
+                <label className="block text-[10px] font-black text-slate-450 dark:text-slate-550 mb-1.5 text-center uppercase tracking-wider">
+                  ENTER 6-DIGIT PROFILE PASSWORD PIN:
+                </label>
+                <input
+                  type="password"
+                  maxLength={6}
+                  value={deletePinInput}
+                  onChange={(e) => {
+                    setDeleteErrorMsg('');
+                    setDeletePinInput(e.target.value.replace(/\D/g, ''));
+                  }}
+                  placeholder="••••• •"
+                  className="w-full text-center bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-700 rounded-2xl py-2.5 focus:outline-none focus:ring-2 focus:ring-red-500/50 font-mono tracking-widest text-lg font-black"
+                  autoFocus
+                />
+              </div>
+
+              {deleteErrorMsg && (
+                <p className="text-red-500 text-xs font-bold text-center bg-red-50 dark:bg-red-950/20 py-2 rounded-xl border border-red-100 dark:border-red-900/40 animate-bounce">
+                  {deleteErrorMsg}
+                </p>
+              )}
+
+              <div className="flex gap-2.5 pt-1">
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setDeleteTargetVideo(null);
+                    setDeletePinInput('');
+                    setDeleteErrorMsg('');
+                  }}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-sans font-bold py-2.5 px-3 rounded-xl text-xs transition-all active:scale-[0.98]"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 bg-red-650 hover:bg-red-700 text-white font-sans font-bold py-2.5 px-3 rounded-xl text-xs transition-all active:scale-[0.98] shadow-md shadow-red-650/15"
+                >
+                  Remove Video
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
       {/* Dynamic Grid Layout for Responsive Screens */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         
@@ -1412,10 +1545,24 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
                                     setShiftPinInput('');
                                     setShiftError('');
                                   }}
-                                  className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-indigo-50 dark:text-slate-300 dark:hover:bg-indigo-950/45 dark:hover:text-indigo-400 flex items-center gap-1.5 rounded-xl transition-colors"
+                                  className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900 flex items-center gap-1.5 rounded-xl transition-colors"
                                 >
-                                  <Clock size={13} className="text-indigo-500" />
+                                  <Clock size={13} className="text-amber-500" />
                                   Shift to Next Day
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuVideoId(null);
+                                    setDeleteTargetVideo(video);
+                                    setDeletePinInput('');
+                                    setDeleteErrorMsg('');
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-xs font-bold text-red-650 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/20 flex items-center gap-1.5 rounded-xl transition-colors mt-0.5"
+                                >
+                                  <Trash2 size={13} className="text-red-500" />
+                                  Remove from Today
                                 </button>
                               </div>
                             </>
