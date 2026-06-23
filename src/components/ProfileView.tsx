@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../store';
 import { auth, db } from '../lib/firebase';
-import { collection, query, orderBy, onSnapshot, where } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, where, doc, getDoc } from 'firebase/firestore';
 import { LogOut, Palette, Ticket, Shield, Lock, Calendar, CheckCircle2, Clock3, AlertTriangle, Sparkles, PlayCircle, Star, GraduationCap, RefreshCcw } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { getLevelInfo } from '../lib/utils';
 
 export default function ProfileView() {
-  const { userData, user, setTheme, setDeletePin, refreshUserData, updateUserData } = useAppContext();
+  const { userData, user, setTheme, setDeletePin, refreshUserData, updateUserData, restoreProgressFromEmail } = useAppContext();
   const [currentPinInput, setCurrentPinInput] = useState('');
   const [pinInput, setPinInput] = useState('');
   const [pinSaved, setPinSaved] = useState(false);
@@ -15,6 +15,12 @@ export default function ProfileView() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [chapters, setChapters] = useState<any[]>([]);
   const [activeDayTab, setActiveDayTab] = useState<'today' | 'tomorrow' | 'dayAfter'>('today');
+
+  // Multi-Account Progress Swap & Recovery States
+  const [backupsDetail, setBackupsDetail] = useState<Record<string, any>>({});
+  const [restoreError, setRestoreError] = useState('');
+  const [restoreSuccess, setRestoreSuccess] = useState('');
+  const [isRestoring, setIsRestoring] = useState<string | null>(null);
 
   // Points Adjustment States
   const [adjustPointsPinInput, setAdjustPointsPinInput] = useState('');
@@ -48,6 +54,31 @@ export default function ProfileView() {
     });
     return () => unsubscribe();
   }, [user]);
+
+  // Fetch the latest backups of family accounts
+  const fetchBackups = async () => {
+    if (!user) return;
+    const familyEmails = ['mnjkairi1@gmail.com', 'mnjkairitroller@gmail.com', 'pavanffm@gmail.com'];
+    const details: Record<string, any> = {};
+    try {
+      for (const email of familyEmails) {
+        const docRef = doc(db, 'family_backups', email);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          details[email] = snap.data();
+        } else {
+          details[email] = null;
+        }
+      }
+      setBackupsDetail(details);
+    } catch (err) {
+      console.error("Error prefetching family backups:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchBackups();
+  }, [user, userData?.points]);
 
   if (!userData) return null;
 
@@ -261,6 +292,30 @@ export default function ProfileView() {
       console.error(err);
     } finally {
       setTimeout(() => setIsSyncing(false), 800); // Small delay for UX
+    }
+  };
+
+  const handleRestore = async (sourceEmail: string) => {
+    if (!window.confirm(`Kya aap sach me "${sourceEmail}" ka complete progress is account me copy karna chahte hain?`)) {
+      return;
+    }
+    setIsRestoring(sourceEmail);
+    setRestoreError('');
+    setRestoreSuccess('');
+    try {
+      if (restoreProgressFromEmail) {
+        const res = await restoreProgressFromEmail(sourceEmail);
+        if (res.success) {
+          setRestoreSuccess(`Success! "${sourceEmail}" ka progress is account me safely clone ho gaya hai. Level ${res.backup.level} (XP: ${res.backup.points}) set ho chuka hai! 🎉`);
+          fetchBackups(); // Reload state
+        }
+      } else {
+        throw new Error("Oops! Restore function active nahi hai.");
+      }
+    } catch (err: any) {
+      setRestoreError(err.message || "Progress copy karne me error aaya.");
+    } finally {
+      setIsRestoring(null);
     }
   };
 
@@ -713,22 +768,125 @@ export default function ProfileView() {
             )}
           </div>
 
+          {/* 🔄 Data Sync & Rescue Section */}
           <div className="space-y-4 bg-slate-50/50 dark:bg-slate-900/10 p-5 rounded-[2rem] border border-slate-100 dark:border-slate-800/40">
             <h3 className="font-bold text-lg flex items-center gap-2">
               <RefreshCcw className={`text-blue-500 ${isSyncing ? 'animate-spin' : ''}`} />
               Data Synchronization
             </h3>
             <div className="app-card rounded-2xl p-4 border space-y-3 text-left">
-               <p className="text-sm app-text-muted">Manually force an update of your profile points and lesson progress from the cloud if anything appears missing or out of sync.</p>
-               
-               <button 
-                  onClick={handleSyncData}
-                  disabled={isSyncing}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 active:scale-[0.99] text-blue-700 dark:text-blue-400 font-bold rounded-xl transition"
-               >
-                  <RefreshCcw size={18} className={isSyncing ? 'animate-spin' : ''} />
-                  {isSyncing ? "Syncing with Cloud..." : "Check & Sync Progress"}
-               </button>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Manually force-reload your stats from the cloud database if things look out of sync.
+              </p>
+              <button 
+                onClick={handleSyncData}
+                disabled={isSyncing}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/30 dark:hover:bg-blue-950/50 active:scale-[0.99] text-blue-700 dark:text-blue-400 font-black rounded-xl transition text-xs border border-blue-100 dark:border-blue-900/30 cursor-pointer"
+              >
+                <RefreshCcw size={14} className={isSyncing ? 'animate-spin' : ''} />
+                {isSyncing ? "Syncing stats..." : "Check & Sync Active Profile"}
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-4 bg-indigo-50/10 dark:bg-indigo-950/5 p-5 rounded-[2rem] border border-indigo-100/50 dark:border-indigo-950/50">
+            <h3 className="font-bold text-lg flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
+              <Sparkles className="text-indigo-500 animate-pulse" />
+              Progress Swap & Recovery Panel
+            </h3>
+            <div className="app-card rounded-2xl p-4 border bg-white dark:bg-slate-900 space-y-4 text-left">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-semibold">
+                SikhQuest account disaster protection active! ⚙️ <br />
+                Aap logged-in accounts ya niche diye gaye family keys se saved progress ko is active account me safely clone (copy) kar sakte hain, taaki aapka levels, points, and streak kabhi lost na ho.
+              </p>
+
+              {/* Recovery Status Messages */}
+              {restoreSuccess && (
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-900/30 rounded-xl text-xs font-bold leading-normal">
+                  {restoreSuccess}
+                </div>
+              )}
+              {restoreError && (
+                <div className="p-3 bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-200/50 dark:border-rose-900/30 rounded-xl text-xs font-bold leading-normal">
+                  {restoreError}
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {['mnjkairi1@gmail.com', 'mnjkairitroller@gmail.com', 'pavanffm@gmail.com'].map((familyEmail) => {
+                  const backup = backupsDetail[familyEmail];
+                  const isActive = user?.email?.toLowerCase() === familyEmail;
+                  
+                  return (
+                    <div 
+                      key={familyEmail} 
+                      className={`p-3 rounded-xl border transition-all ${
+                        isActive 
+                          ? 'bg-indigo-50/20 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-900' 
+                          : 'bg-slate-50/40 dark:bg-slate-900/10 border-slate-150 dark:border-slate-800'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start gap-2 mb-2">
+                        <span className="font-mono text-[11px] font-black text-slate-700 dark:text-slate-300 break-all select-all">
+                          {familyEmail}
+                        </span>
+                        {isActive && (
+                          <span className="text-[9px] uppercase font-black px-2 py-0.5 rounded bg-indigo-500 text-white animate-pulse">
+                            Active User
+                          </span>
+                        )}
+                      </div>
+
+                      {backup ? (
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-950/50 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                          <div className="space-y-0.5">
+                            <p className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
+                              🏆 Level {backup.level} Explorer ({backup.points} XP)
+                            </p>
+                            <p className="text-[9px] text-slate-400 font-semibold">
+                              🔥 {backup.streak} Days Streak • Completed: {backup.completedLessons?.length || 0} tasks
+                            </p>
+                          </div>
+
+                          <button
+                            onClick={() => handleRestore(familyEmail)}
+                            disabled={!!isRestoring}
+                            className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase transition-all shadow-sm ${
+                              isRestoring === familyEmail
+                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                : 'bg-gradient-to-r from-indigo-500 to-semibold text-white hover:opacity-90 active:scale-[0.98] cursor-pointer bg-indigo-600'
+                            }`}
+                          >
+                            {isRestoring === familyEmail ? "Copying..." : "Clone to ID 🔄"}
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between items-center bg-slate-100/50 dark:bg-slate-950/20 p-2.5 rounded-lg border border-dashed border-slate-200 dark:border-slate-850">
+                          <span className="text-[10px] text-slate-400 font-semibold italic">No backup on Cloud yet</span>
+                          <button
+                            onClick={async () => {
+                              try {
+                                if (isActive) {
+                                  // Trigger immediate update
+                                  await updateUserData({ lastActive: new Date().toISOString() });
+                                  fetchBackups();
+                                } else {
+                                  alert(`Backup is automatic when logged in as ${familyEmail}. Log in with that email to save its status first!`);
+                                }
+                              } catch (e) {
+                                console.error(e);
+                              }
+                            }}
+                            className="px-2 py-1 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-755 text-slate-600 dark:text-slate-400 rounded-md font-bold text-[9px] uppercase cursor-pointer"
+                          >
+                            {isActive ? "Backup Now ⬆️" : "Info"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
 

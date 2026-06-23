@@ -10,7 +10,6 @@ import StatsView from './components/StatsView';
 import ProfileView from './components/ProfileView';
 import ChapterDetailsView from './components/ChapterDetailsView';
 import AchievementsView from './components/AchievementsView';
-import PWAInstall from './components/PWAInstall';
 import { motion } from 'motion/react';
 import { ShieldAlert, KeyRound, WifiOff, RefreshCw } from 'lucide-react';
 
@@ -106,7 +105,6 @@ function MainApp() {
 
   return (
     <div className="min-h-screen transition-colors duration-300">
-      <PWAInstall />
 
       {/* Force upgrade of legacy non-6-digit PINs */}
       {userData?.deletePin && userData.deletePin.length !== 6 && (

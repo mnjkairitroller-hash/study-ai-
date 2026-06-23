@@ -53,6 +53,7 @@ interface AppContextType {
   updateLessonProgress: (lessonId: string, progressSeconds: number) => Promise<void>;
   setDeletePin: (pin: string) => Promise<void>;
   refreshUserData: () => Promise<void>;
+  restoreProgressFromEmail: (sourceEmail: string) => Promise<{ success: boolean; backup: any }>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -134,8 +135,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               }
             }
 
-            setUserData({ ...data, streak: newStreak, points: currentPoints, level: currentLevel });
+            const finalState = { ...data, streak: newStreak, points: currentPoints, level: currentLevel };
+            setUserData(finalState);
             setLoading(false);
+
+            // Auto-backup for the 3 specified family accounts
+            if (currentUser.email) {
+              const emailLower = currentUser.email.toLowerCase();
+              const familyEmails = ['mnjkairi1@gmail.com', 'mnjkairitroller@gmail.com', 'pavanffm@gmail.com'];
+              if (familyEmails.includes(emailLower)) {
+                const backupRef = doc(db, 'family_backups', emailLower);
+                setDoc(backupRef, {
+                  ...finalState,
+                  email: emailLower,
+                  lastBackupTime: new Date().toISOString()
+                }, { merge: true }).catch(err => {
+                  console.error("Auto backup save failed:", err);
+                });
+              }
+            }
           } else {
             // Create initial user data ONLY if we are online and sure it doesn't exist on server
             if (!(docSnap as any).metadata?.fromCache) {
@@ -276,6 +294,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const restoreProgressFromEmail = async (sourceEmail: string): Promise<{ success: boolean; backup: any }> => {
+    if (!user) throw new Error("No user is logged in!");
+    try {
+      const backupRef = doc(db, 'family_backups', sourceEmail.toLowerCase().trim());
+      const backupSnap = await getDoc(backupRef);
+      if (!backupSnap.exists()) {
+        throw new Error(`Progress backup for ${sourceEmail} does not exist in the cloud yet!`);
+      }
+      
+      const backupData = backupSnap.data() as any;
+      const cleanBackup: Partial<UserData> = {
+        points: backupData.points ?? 0,
+        level: backupData.level ?? 1,
+        streak: backupData.streak ?? 1,
+        lastActive: backupData.lastActive ?? new Date().toISOString(),
+        rewards: backupData.rewards ?? [],
+        completedLessons: backupData.completedLessons ?? [],
+        lessonProgress: backupData.lessonProgress ?? {},
+        deletePin: backupData.deletePin ?? '',
+        subjects: backupData.subjects ?? ['Math', 'Science', 'English', 'Computer', 'History'],
+        dailyLessonsCount: backupData.dailyLessonsCount ?? 0,
+        currentRoutine: backupData.currentRoutine ?? null,
+        redemptionHistory: backupData.redemptionHistory ?? [],
+      };
+
+      // Write to current user's profile
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, cleanBackup);
+
+      // Force-write or align the local state as well
+      setUserData((prev) => prev ? { ...prev, ...cleanBackup } : (cleanBackup as UserData));
+
+      // Mirror it to this user's email backup slot so they match
+      if (user.email) {
+        const myEmailLower = user.email.toLowerCase();
+        const myBackupRef = doc(db, 'family_backups', myEmailLower);
+        await setDoc(myBackupRef, {
+          ...cleanBackup,
+          email: myEmailLower,
+          lastBackupTime: new Date().toISOString()
+        }, { merge: true });
+      }
+
+      return { success: true, backup: cleanBackup };
+    } catch (err: any) {
+      console.error("Restore progress error:", err);
+      throw new Error(err.message || "Failed to restore progress");
+    }
+  };
+
   return (
     <AppContext.Provider value={{
       user,
@@ -288,7 +356,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       markLessonComplete,
       updateLessonProgress,
       setDeletePin,
-      refreshUserData
+      refreshUserData,
+      restoreProgressFromEmail
     }}>
       {children}
     </AppContext.Provider>

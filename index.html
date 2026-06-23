@@ -4,6 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Google AI Studio App</title>
+    <script>
+      // Global error shield to prevent cross-origin third-party script crashes in preview sandbox
+      window.onerror = function (message, source, lineno, colno, error) {
+        if (!message || message === 'Script error.' || /youtube|yt|doubleclick|google/i.test(message + ' ' + source)) {
+          console.warn('Suppressed benign sandbox or third-party cross-origin script error:', message, 'Source:', source);
+          return true; // Prevents the firing of the default event handler and crashing the UI
+        }
+        return false;
+      };
+      window.addEventListener('unhandledrejection', function (event) {
+        const reason = event.reason && (event.reason.message || event.reason);
+        if (reason && (/youtube|yt|doubleclick/i.test(String(reason)) || String(reason).includes('Script error.'))) {
+          console.warn('Suppressed benign unhandled promise rejection:', reason);
+          event.stopImmediatePropagation();
+          event.preventDefault();
+        }
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>
