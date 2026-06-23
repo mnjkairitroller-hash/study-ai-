@@ -4,7 +4,7 @@ import { collection, query, orderBy, onSnapshot, limit, where } from 'firebase/f
 import { handleFirestoreError, OperationType } from '../lib/firebase';
 import { useAppContext } from '../store';
 import { getLevelInfo } from '../lib/utils';
-import { Flame, PlayCircle, Target, CheckCircle2, Trophy, Sparkles, BookHeart, BrainCircuit, Award, Users, Calendar, HelpCircle, Check, AlertCircle, X, RotateCcw, ChevronRight, BookOpen } from 'lucide-react';
+import { Flame, PlayCircle, Target, CheckCircle2, Trophy, Sparkles, BookHeart, BrainCircuit, Award, Users, Calendar, HelpCircle, Check, AlertCircle, X, RotateCcw, ChevronRight, BookOpen, MoreVertical, Clock } from 'lucide-react';
 import { motion } from 'motion/react';
 import mascotImg from '../assets/images/cute_study_mascot_1781752313835.jpg';
 import confetti from 'canvas-confetti';
@@ -171,6 +171,40 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
   const [overridePinInput, setOverridePinInput] = useState('');
   const [overrideError, setOverrideError] = useState('');
 
+  // Shift Video States
+  const [shiftTargetVideo, setShiftTargetVideo] = useState<any | null>(null);
+  const [shiftPinInput, setShiftPinInput] = useState('');
+  const [shiftError, setShiftError] = useState('');
+
+  const [activeMenuVideoId, setActiveMenuVideoId] = useState<string | null>(null);
+
+  const handleShiftVideo = async (videoId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!userData || !userData.currentRoutine) return;
+    
+    // Set isShifted: true for this video inside currentRoutine.videos
+    const updatedVideos = userData.currentRoutine.videos.map((v: any) => {
+      if (v.id === videoId) {
+        return { ...v, isShifted: true };
+      }
+      return v;
+    });
+    
+    await updateUserData({
+      currentRoutine: {
+        ...userData.currentRoutine,
+        videos: updatedVideos
+      }
+    });
+
+    // Also show a toast notification
+    setAiNotification({
+      message: `Video shifted! 🕒`,
+      subMessage: `This lesson has been rescheduled to tomorrow. Timetable adjusted accordingly!`,
+      timestamp: Date.now()
+    });
+  };
+
   // Load and initialize 9 realistic Indian classmate AI Competitors from localStorage
   useEffect(() => {
     if (!user) return;
@@ -239,16 +273,20 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
 
       if (lastSeen) {
         const now = Date.now();
-        const daysPassed = Math.floor((now - parseInt(lastSeen, 10)) / (1000 * 60 * 60 * 24));
+        const lastSeenMs = parseInt(lastSeen, 10);
+        const lastSeenDate = new Date(lastSeenMs).toDateString();
+        const todayDate = new Date().toDateString();
         
-        if (daysPassed > 0) {
-          // Add 30 to 100 points per day passed for each competitor
+        let shouldUpdate = false;
+        
+        if (lastSeenDate !== todayDate) {
+          // The calendar day has changed! Everyone gets a daily increase of 70 to 105 points!
+          const daysPassed = Math.max(1, Math.floor((now - lastSeenMs) / (1000 * 60 * 60 * 24)));
           list = list.map((opp: any) => {
-            const dailyPointsOptions = [30, 45, 60, 75, 100];
             let pointsToGain = 0;
-            // Cap simulation to max 7 days to avoid extreme inflation if they return after months
-            for (let i = 0; i < Math.min(daysPassed, 7); i++) {
-               pointsToGain += dailyPointsOptions[Math.floor(Math.random() * dailyPointsOptions.length)];
+            const cappedDays = Math.min(daysPassed, 7);
+            for (let i = 0; i < cappedDays; i++) {
+               pointsToGain += 70 + Math.floor(Math.random() * 36); // Generate 70 to 105 points!
             }
             const newPoints = opp.points + pointsToGain;
             const { level: newLvl } = getLevelInfo(newPoints);
@@ -256,9 +294,32 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
               ...opp,
               points: newPoints,
               level: newLvl,
-              streak: opp.streak + Math.min(daysPassed, 7) // Increment streak
+              streak: opp.streak + cappedDays
             };
           });
+          shouldUpdate = true;
+        } else {
+          // Same calendar day, but check if hours passed to simulate quiet progression in between
+          const hoursPassed = Math.floor((now - lastSeenMs) / (1000 * 60 * 60));
+          if (hoursPassed >= 1) {
+            list = list.map((opp: any) => {
+              const pointsPerHour = 3 + Math.random() * 1.5;
+              const pointsToGain = Math.floor(hoursPassed * pointsPerHour);
+              if (pointsToGain <= 0) return opp;
+              
+              const newPoints = opp.points + pointsToGain;
+              const { level: newLvl } = getLevelInfo(newPoints);
+              return {
+                ...opp,
+                points: newPoints,
+                level: newLvl
+              };
+            });
+            shouldUpdate = true;
+          }
+        }
+        
+        if (shouldUpdate) {
           localStorage.setItem(storageKey, JSON.stringify(list));
           localStorage.setItem(lastSeenKey, now.toString());
         }
@@ -721,7 +782,10 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
 
       for (const v of currentRoutine.videos) {
         if (!completed.includes(v.id)) {
-          // If it's an extra class, do not apply a deduction, but still add to missed list conceptually (optional) or just bypass penalty
+          // If the video was explicitly shifted to next day, do not penalize today!
+          if (v.isShifted) {
+            continue;
+          }
           const duration = v.duration || 1200;
           let penalty = duration >= 1800 ? 40 : 30;
 
@@ -745,16 +809,24 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
       // Generate next uncompleted lessons from the database
       const freshRoutine = generateRoutine();
       const freshSubjects = freshRoutine.map(v => v.subject);
+      const freshVideoIds = freshRoutine.map(v => v.id);
 
-      // Carry over any uncompleted (missed) lessons from yesterday's routine ONLY if the subject isn't scheduled today
+      // Carry over any uncompleted (missed) lessons from yesterday's routine
       const shiftedVideos = currentRoutine.videos.filter(v => !completed.includes(v.id));
       
       const combinedRoutine = [...freshRoutine];
       shiftedVideos.forEach(shifted => {
-        if (!freshSubjects.includes(shifted.subject)) {
-          // If a subject was completely skipped for today (e.g., English on Tuesday), 
-          // but the user missed it previously, we carry it over as a compulsory catch-up task.
-          combinedRoutine.push({ ...shifted, isExtraClass: false });
+        // Clean up isShifted flag for the new day
+        const cleanedShifted = { ...shifted };
+        if (cleanedShifted.isShifted) {
+          delete cleanedShifted.isShifted;
+        }
+
+        if (!freshVideoIds.includes(shifted.id)) {
+          // Carry over if subject is not scheduled today, or if it was explicitly shifted yesterday:
+          if (!freshSubjects.includes(cleanedShifted.subject) || shifted.isShifted) {
+            combinedRoutine.push({ ...cleanedShifted, isExtraClass: false });
+          }
         }
       });
 
@@ -790,7 +862,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
   const todayRoutine = generateRoutine().filter(video => !userData?.completedLessons?.includes(video.id));
 
   const activeRoutineVideos = ((userData?.currentRoutine && userData.currentRoutine.date === new Date().toDateString())
-    ? userData.currentRoutine.videos
+    ? userData.currentRoutine.videos.filter((video: any) => !video.isShifted)
     : todayRoutine).filter(video => !userData?.completedLessons?.includes(video.id));
 
   const quests = activeRoutineVideos.length > 0 
@@ -828,7 +900,59 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
     isCurrentUser: true
   };
 
-  const displayLeaderboard = [currentUserItem, ...aiCompetitors];
+  const displayLeaderboard = [currentUserItem, ...aiCompetitors.map(c => ({ ...c }))];
+
+  const currentDateObject = new Date();
+  const dayHashValue = currentDateObject.getDate() + currentDateObject.getMonth() * 31;
+  const preventFirstRank = (dayHashValue % 10) !== 0; // 90% of days force first rank away!
+
+  if (preventFirstRank && aiCompetitors.length > 0) {
+    // Target user rank: 2 to 7
+    const targetUserRank = (dayHashValue % 6) + 2; // 2, 3, 4, 5, 6, 7
+    const sortedAIs = [...aiCompetitors].sort((a, b) => b.points - a.points);
+    const numToBoost = targetUserRank - 1; // classmates to place ahead of the user
+
+    // Boost the target classmates to have points slightly higher than the user
+    // And push down any other classmates to be below the user
+    const finalAIs = aiCompetitors.map((comp) => {
+      const idxInSorted = sortedAIs.findIndex(x => x.id === comp.id);
+      
+      if (idxInSorted < numToBoost) {
+        // Boost this classmate of index `idxInSorted` to be ahead of the user
+        const rankDiff = numToBoost - idxInSorted; // larger index means smaller rank difference, so smaller boost
+        const baseBoost = rankDiff * 20; // e.g. 60, 40, 20
+        const subtleVariance = (dayHashValue * (idxInSorted + 1)) % 10;
+        const totalBoostVal = baseBoost + subtleVariance + 8;
+        
+        const newPointsVal = currentUserItem.points + totalBoostVal;
+        const { level: newLevelLvl } = getLevelInfo(newPointsVal);
+        return {
+          ...comp,
+          points: newPointsVal,
+          level: newLevelLvl
+        };
+      }
+      
+      // If they are not in the top unboosted ranks but their organic points exceed or equal the user's points,
+      // push them below the user to ensure exact target rank representation.
+      if (comp.points >= currentUserItem.points) {
+        const rankIdxFromUser = idxInSorted - numToBoost;
+        const offsetReduction = (rankIdxFromUser + 1) * 15 + ((dayHashValue * (rankIdxFromUser + 1)) % 12);
+        const newPointsVal = Math.max(10, currentUserItem.points - offsetReduction);
+        const { level: newLevelLvl } = getLevelInfo(newPointsVal);
+        return {
+          ...comp,
+          points: newPointsVal,
+          level: newLevelLvl
+        };
+      }
+      
+      return comp;
+    });
+
+    displayLeaderboard.length = 0;
+    displayLeaderboard.push(currentUserItem, ...finalAIs);
+  }
 
   // Sort and assign ranks
   displayLeaderboard.sort((a, b) => b.points - a.points);
@@ -1022,6 +1146,99 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
         </div>
       )}
 
+      {shiftTargetVideo && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[70] flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-indigo-200 dark:border-indigo-900/50 p-6 sm:p-8 max-w-sm w-full relative shadow-2xl text-center"
+          >
+            <div className="mx-auto w-14 h-14 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 flex items-center justify-center mb-4">
+              <Clock className="text-amber-600 dark:text-amber-400" size={28} />
+            </div>
+
+            <span className="text-[10px] font-black uppercase tracking-widest text-amber-500 bg-amber-50 dark:bg-amber-950/40 px-3 py-1 rounded-full">
+              Reschedule Video
+            </span>
+            <h3 className="font-sans font-black text-lg text-slate-900 dark:text-white mt-3">
+              Shift to Tomorrow?
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1.5 leading-relaxed">
+              Reschedule this video to tomorrow. The daily schedule will automatically adapt so you don't lose points.
+            </p>
+
+            <div className="my-4 p-3 bg-indigo-50/30 dark:bg-indigo-950/20 rounded-2xl border border-indigo-100/50 dark:border-indigo-900/10 text-left">
+              <span className="text-[9px] font-extrabold text-indigo-500 uppercase tracking-widest block">
+                {shiftTargetVideo.subject || 'Subject'}
+              </span>
+              <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-snug line-clamp-2">
+                {shiftTargetVideo.title}
+              </h4>
+            </div>
+
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setShiftError('');
+              if (!userData?.deletePin) {
+                setShiftError('Teacher PIN is not set! Set it in Profile Settings. 🔒');
+                return;
+              }
+              if (shiftPinInput === userData.deletePin) {
+                await handleShiftVideo(shiftTargetVideo.id);
+                setShiftTargetVideo(null);
+                setShiftPinInput('');
+              } else {
+                setShiftError('Incorrect Profile Password / PIN! ❌');
+              }
+            }} className="space-y-4">
+              <div className="text-left">
+                <label className="block text-[10px] font-black text-slate-450 dark:text-slate-550 mb-1.5 text-center uppercase tracking-wider">
+                  ENTER 6-DIGIT PROFILE PASSWORD PIN:
+                </label>
+                <input
+                  type="password"
+                  maxLength={6}
+                  value={shiftPinInput}
+                  onChange={(e) => {
+                    setShiftError('');
+                    setShiftPinInput(e.target.value.replace(/\D/g, ''));
+                  }}
+                  placeholder="••••• •"
+                  className="w-full text-center bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-700 rounded-2xl py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 font-mono tracking-widest text-lg font-black"
+                  autoFocus
+                />
+              </div>
+
+              {shiftError && (
+                <p className="text-red-500 text-xs font-bold text-center bg-red-50 dark:bg-red-950/20 py-2 rounded-xl border border-red-100 dark:border-red-900/40 animate-bounce">
+                  {shiftError}
+                </p>
+              )}
+
+              <div className="flex gap-2.5 pt-1">
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setShiftTargetVideo(null);
+                    setShiftPinInput('');
+                    setShiftError('');
+                  }}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-705 text-slate-700 dark:text-slate-300 font-sans font-bold py-2.5 px-3 rounded-xl text-xs transition-all active:scale-[0.98]"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-sans font-bold py-2.5 px-3 rounded-xl text-xs transition-all active:scale-[0.98] shadow-md shadow-indigo-600/15"
+                >
+                  Shift Video
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
       {/* Dynamic Grid Layout for Responsive Screens */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         
@@ -1061,7 +1278,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {todayRoutine.length === 0 ? (
+              {activeRoutineVideos.length === 0 ? (
                 <div className="col-span-full app-card rounded-[2rem] border border-dashed border-slate-300 dark:border-slate-800 p-10 text-center bg-white dark:bg-slate-900/50">
                    <br />
                    <Sparkles className="mx-auto text-yellow-500 mb-3" size={32} />
@@ -1070,7 +1287,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
                    <br />
                 </div>
               ) : (
-                todayRoutine.map((video, idx) => {
+                activeRoutineVideos.map((video, idx) => {
                   // Extract YT ID for thumbnail
                   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
                   const match = video.videoUrl?.match(regExp);
@@ -1116,16 +1333,16 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
                       </div>
 
                       {/* Video Details Row (Channel Info + Text Title underneath like YouTube) - inside the card with padding! */}
-                      <div className="flex gap-3 p-5 flex-1 bg-white/40 dark:bg-slate-900/30 border-t border-slate-100 dark:border-slate-800/40">
+                      <div className="flex gap-3 p-5 flex-1 bg-white/40 dark:bg-slate-900/30 border-t border-slate-100 dark:border-slate-800/40 relative">
                         {/* Fake Channel Avatar using Subject Initial */}
                         <div className="w-9 h-9 rounded-full bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-100 dark:border-indigo-900 flex-shrink-0 flex items-center justify-center font-black text-sm text-indigo-600 dark:text-indigo-400 select-none shadow-inner">
                           {video.subject ? video.subject.charAt(0).toUpperCase() : 'M'}
                         </div>
 
                         {/* Text Metadata */}
-                        <div className="flex-1 min-w-0 flex flex-col justify-between">
+                        <div className="flex-1 min-w-0 flex flex-col justify-between relative pr-8">
                           <div>
-                            <h4 className="font-extrabold text-slate-900 dark:text-white leading-snug line-clamp-2 text-[14px] group-hover:text-indigo-500 transition-colors duration-200">{video.title}</h4>
+                            <h4 className="font-extrabold text-slate-900 dark:text-white leading-snug line-clamp-2 text-[14px] group-hover:text-indigo-500 transition-colors duration-200 pr-1">{video.title}</h4>
                             <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1 truncate">
                               {video.subject} • {video.chapterTitle}
                             </p>
@@ -1133,6 +1350,50 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
                           <p className="text-[10px] font-black text-indigo-600/90 dark:text-indigo-400/90 mt-2 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-1 rounded inline-block w-fit uppercase tracking-wider">
                             {userData?.completedLessons?.includes(video.id) ? '🎉 Completed • Mastery' : '⚡ practice practice'}
                           </p>
+
+                          {/* 3 Dots Menu Button & Dropdown */}
+                          <div className="absolute top-0.5 right-0 z-20">
+                            <button
+                              id={`shift-menu-btn-${video.id}`}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveMenuVideoId(activeMenuVideoId === video.id ? null : video.id);
+                              }}
+                              className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-all active:scale-95"
+                              title="More Options"
+                            >
+                              <MoreVertical size={16} />
+                            </button>
+
+                            {activeMenuVideoId === video.id && (
+                              <>
+                                <div 
+                                  className="fixed inset-0 z-30" 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuVideoId(null);
+                                  }}
+                                />
+                                <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl py-1.5 px-1 z-40 animate-in fade-in slide-in-from-top-1 duration-150">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveMenuVideoId(null);
+                                      setShiftTargetVideo(video);
+                                      setShiftPinInput('');
+                                      setShiftError('');
+                                    }}
+                                    className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-indigo-50 dark:text-slate-350 dark:hover:bg-indigo-950/45 dark:hover:text-indigo-400 flex items-center gap-1.5 rounded-xl transition-colors"
+                                  >
+                                    <Clock size={13} className="text-indigo-500" />
+                                    Shift to Next Day
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </motion.div>
