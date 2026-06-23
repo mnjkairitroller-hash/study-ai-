@@ -162,6 +162,8 @@ export default function ChapterDetailsView({ chapter, setTab, setPlayingVideo }:
       } else {
         setTab('study'); // Chapter deleted
       }
+    }, (error) => {
+      console.error("Error receiving onSnapshot updates for Chapter Details:", error);
     });
     return () => unsub();
   }, [chapter.id, setTab]);

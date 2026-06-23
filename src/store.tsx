@@ -78,10 +78,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (missingName || missingPhoto) {
               const finalName = currentUser.displayName || currentUser.email?.split('@')[0] || 'Student';
               const finalPhoto = currentUser.photoURL || '';
-              updateDoc(userRef, {
-                ...(missingName ? { displayName: finalName } : {}),
-                ...(missingPhoto ? { photoURL: finalPhoto } : {})
-              });
+              if (!docSnap.metadata.fromCache) {
+                updateDoc(userRef, {
+                  ...(missingName ? { displayName: finalName } : {}),
+                  ...(missingPhoto ? { photoURL: finalPhoto } : {})
+                });
+              }
             }
 
             // Check streak
@@ -126,21 +128,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }
               }
               
-              // Update last active and any penalties in background
-              updateDoc(userRef, updates);
+              // Update last active and any penalties in background, only if not from cache
+              if (!(docSnap as any).metadata?.fromCache) {
+                updateDoc(userRef, updates);
+              }
             }
 
             setUserData({ ...data, streak: newStreak, points: currentPoints, level: currentLevel });
+            setLoading(false);
           } else {
-            // Create initial user data
-            const initialData: UserData = {
-              ...DEFAULT_USER_DATA,
-              displayName: currentUser.displayName || currentUser.email?.split('@')[0] || 'Student',
-              photoURL: currentUser.photoURL || ''
-            };
-            setDoc(userRef, initialData);
-            setUserData(initialData);
+            // Create initial user data ONLY if we are online and sure it doesn't exist on server
+            if (!(docSnap as any).metadata?.fromCache) {
+              const initialData: UserData = {
+                ...DEFAULT_USER_DATA,
+                displayName: currentUser.displayName || currentUser.email?.split('@')[0] || 'Student',
+                photoURL: currentUser.photoURL || ''
+              };
+              setDoc(userRef, initialData);
+              setUserData(initialData);
+              setLoading(false);
+            } else {
+              console.log("Document does not exist in local cache, waiting for server connection...");
+              // Do NOT call setDoc or clear user loading
+            }
           }
+        }, (error) => {
+          console.error("Firestore user onSnapshot error:", error);
           setLoading(false);
         });
         return () => unsubDoc();

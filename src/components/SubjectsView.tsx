@@ -478,6 +478,8 @@ export default function SubjectsView({ setTab, setSelectedChapter }: { setTab: (
     const unsub = onSnapshot(q, (snap) => {
       const data = snap.docs.map(document => ({ id: document.id, ...document.data() }));
       setChapters(data);
+    }, (error) => {
+      console.error("Error fetching chapters inside SubjectsView:", error);
     });
     return () => unsub();
   }, [user]);
