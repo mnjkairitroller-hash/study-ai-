@@ -18,12 +18,26 @@ function MainApp() {
   const [currentTab, setCurrentTab] = useState('dashboard');
   const [playingVideo, setPlayingVideo] = useState<any>(null);
   const [selectedChapter, setSelectedChapter] = useState<any>(null);
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   
   // States for PIN upgrading
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [isUpgrading, setIsUpgrading] = useState(false);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const handleUpgradePin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,6 +61,35 @@ function MainApp() {
       setIsUpgrading(false);
     }
   };
+
+  if (!isOnline) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3 }}
+          className="bg-slate-900 border border-slate-800 rounded-3xl p-8 max-w-md w-full shadow-2xl text-center"
+        >
+          <div className="w-20 h-20 bg-rose-950/50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner animate-pulse">
+            <WifiOff size={40} />
+          </div>
+          <h2 className="text-2xl font-black mb-3 text-slate-100 tracking-tight leading-none">Connection Required 📡</h2>
+          <p className="text-base font-bold text-rose-400 mb-4 px-2">Aap abhi offline hain!</p>
+          <p className="text-sm text-slate-400 mb-8 leading-relaxed">
+            StudyQuest ek online website ki tarah behave karta hai. Please internet connect karein to continue learning without losing progress!
+          </p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-2xl transition shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+          >
+            <RefreshCw size={18} className="animate-spin-slow" />
+            Check Connection & Retry
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
