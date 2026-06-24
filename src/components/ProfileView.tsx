@@ -333,8 +333,14 @@ export default function ProfileView() {
         </div>
         <h2 className="text-2xl font-bold tracking-tight text-center">{user?.displayName || 'Student'}</h2>
         <p className="app-text-muted text-center">{user?.email}</p>
-        <div className="mt-2 text-sm font-bold bg-black/10 dark:bg-white/10 px-3 py-1 rounded-full uppercase tracking-wider">
-          Level {userData.level} Explorer
+        <div className="mt-3 flex flex-col items-center gap-1.5">
+          <div className="text-sm font-bold bg-black/10 dark:bg-white/10 px-3 py-1 rounded-full uppercase tracking-wider">
+            Level {userData.level} Explorer
+          </div>
+          <div className="text-xs font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-900/50 px-3 py-1 rounded-full shadow-sm flex items-center gap-1.5">
+            <Sparkles size={14} className="text-yellow-500" />
+            Total XP: {userData.points || 0}
+          </div>
         </div>
       </div>
 
