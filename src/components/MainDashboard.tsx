@@ -817,7 +817,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
             continue;
           }
           const duration = v.duration || 1200;
-          let penalty = duration >= 1800 ? 40 : 30;
+          let penalty = 0; // Disabled point deduction for missed lessons!
 
           if (v.isExtraClass) {
             penalty = 0; // No penalty for skipping extra classes
