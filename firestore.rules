@@ -34,5 +34,8 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isSignedIn();
     }
+    match /family_backups/{email} {
+      allow read, write: if isSignedIn();
+    }
   }
 }
