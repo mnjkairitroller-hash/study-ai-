@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../store';
 import { auth, db } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, where, doc, getDoc } from 'firebase/firestore';
-import { LogOut, Palette, Ticket, Shield, Lock, Calendar, CheckCircle2, Clock3, AlertTriangle, Sparkles, PlayCircle, Star, GraduationCap, RefreshCcw } from 'lucide-react';
+import { LogOut, Palette, Ticket, Shield, Lock, Calendar, CheckCircle2, Clock3, AlertTriangle, Sparkles, PlayCircle, Star, GraduationCap, RefreshCcw, MoreVertical } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { getLevelInfo } from '../lib/utils';
 
@@ -15,6 +15,7 @@ export default function ProfileView() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [chapters, setChapters] = useState<any[]>([]);
   const [activeDayTab, setActiveDayTab] = useState<'today' | 'tomorrow' | 'dayAfter'>('today');
+  const [activeMenuVideoId, setActiveMenuVideoId] = useState<string | null>(null);
 
   // Multi-Account Progress Swap & Recovery States
   const [backupsDetail, setBackupsDetail] = useState<Record<string, any>>({});
@@ -505,7 +506,9 @@ export default function ProfileView() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {currentDaysList.map((video: any) => {
               const isCompleted = userData.completedLessons?.includes(video.id);
-              const durationMin = video.duration ? Math.round(video.duration / 60) : 20;
+              const formattedDuration = video.duration 
+                ? `${Math.floor(video.duration / 60)}:${(video.duration % 60).toString().padStart(2, '0')}`
+                : '20:00';
 
               const ytId = extractYtId(video.videoUrl);
               const thumbnailUrl = ytId ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` : undefined;
@@ -522,7 +525,7 @@ export default function ProfileView() {
                   }`}
                 >
                   {/* Thumbnail Header */}
-                  <div className="relative h-32 w-full bg-slate-200 dark:bg-slate-800 shrink-0">
+                  <div className="relative aspect-video w-full bg-slate-200 dark:bg-slate-800 shrink-0">
                     {thumbnailUrl ? (
                       <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url('${thumbnailUrl}')` }}></div>
                     ) : (
@@ -546,23 +549,52 @@ export default function ProfileView() {
                       </span>
                     </div>
 
+                    <div className="absolute top-2 right-2 z-20">
+                      {activeDayTab !== 'today' && !isCompleted && (
+                        <div className="relative">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveMenuVideoId(activeMenuVideoId === video.id ? null : video.id);
+                            }}
+                            className="bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white p-1 rounded-full transition-colors flex items-center justify-center border border-white/20"
+                            title="More options"
+                          >
+                            <MoreVertical size={16} />
+                          </button>
+                          
+                          {activeMenuVideoId === video.id && (
+                            <>
+                              <div 
+                                className="fixed inset-0 z-30" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveMenuVideoId(null);
+                                }}
+                              />
+                              <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl py-1 z-40 animate-in fade-in duration-150">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    pushToToday(video);
+                                    setActiveMenuVideoId(null);
+                                  }}
+                                  className="w-full text-left px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center gap-2 transition-colors"
+                                >
+                                  <Calendar size={16} className="text-indigo-500" /> 
+                                  Push to Today
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                     <div className="absolute bottom-2 left-2 right-2 flex justify-between items-end z-10">
                       <div className="text-white text-xs font-bold bg-black/60 px-2 py-1 rounded backdrop-blur-sm flex items-center gap-1">
-                        <Clock3 size={12} /> {durationMin} Mins
+                        <Clock3 size={12} /> {formattedDuration}
                       </div>
-
-                      {activeDayTab !== 'today' && !isCompleted && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            pushToToday(video);
-                          }}
-                          className="bg-white/20 hover:bg-white/40 backdrop-blur-md text-white text-[10px] font-bold px-2 py-1 rounded transition-colors flex items-center gap-1 border border-white/30"
-                          title="Push this lesson to Today"
-                        >
-                          <Calendar size={12} /> Push to Today
-                        </button>
-                      )}
                     </div>
                   </div>
 

@@ -1493,8 +1493,16 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
                         </div>
 
                         {/* Youtube Duration / Info Badge in Bottom Right */}
-                        <div className="absolute bottom-2.5 right-2.5 text-[10px] font-black uppercase text-white bg-black/85 backdrop-blur-sm px-2 py-0.5 rounded tracking-wider">
-                          Part {video.partNumber}
+                        <div className="absolute bottom-2.5 right-2.5 text-[10px] font-black uppercase text-white bg-black/85 backdrop-blur-sm px-2 py-0.5 rounded tracking-wider flex items-center gap-1.5">
+                          <span>Part {video.partNumber}</span>
+                          {video.duration && (
+                            <>
+                              <span className="opacity-50">•</span>
+                              <span>
+                                {Math.floor(video.duration / 60)}:{(video.duration % 60).toString().padStart(2, '0')}
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
 
