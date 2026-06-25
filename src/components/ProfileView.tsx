@@ -164,29 +164,28 @@ export default function ProfileView() {
       return d.getDay();
     };
 
-    if (userData.currentRoutine && userData.currentRoutine.date === todayStr) {
-      // Keep today's assigned videos stable based on dashboard routine
-      todayLessons = userData.currentRoutine.videos || [];
-    } else {
-      // Dynamic fallback
-      const todayDay = new Date().getDay();
-      const isEnglishDay = todayDay === 1 || todayDay === 4;
+    const excludedIdsToday = (userData?.currentRoutine?.date === todayStr)
+      ? (userData.currentRoutine.videos || []).filter((v: any) => v.isShifted || v.isDeleted).map((v: any) => v.id)
+      : [];
 
-      sortedSubjects.forEach(subject => {
-        const isEnglish = (subject?.toLowerCase() || '').includes('eng');
-        if (isEnglish && !isEnglishDay) return;
+    // Dynamic fallback matching the dashboard
+    const todayDay = new Date().getDay();
+    const isEnglishDay = todayDay === 1 || todayDay === 4;
 
-        const isMath = (subject?.toLowerCase() || '').includes('math');
-        const requiredVideos = (isMath && !isEnglishDay) ? 2 : 1;
+    sortedSubjects.forEach(subject => {
+      const isEnglish = (subject?.toLowerCase() || '').includes('eng');
+      if (isEnglish && !isEnglishDay) return;
 
-        const queue = subjectQueues[subject] || [];
-        const uncompleted = queue.filter(vid => !completed.includes(vid.id));
-        
-        for (let i = 0; i < Math.min(requiredVideos, uncompleted.length); i++) {
-          todayLessons.push(uncompleted[i]);
-        }
-      });
-    }
+      const isMath = (subject?.toLowerCase() || '').includes('math');
+      const requiredVideos = (isMath && !isEnglishDay) ? 2 : 1;
+
+      const queue = subjectQueues[subject] || [];
+      const uncompleted = queue.filter(vid => !completed.includes(vid.id) && !excludedIdsToday.includes(vid.id));
+      
+      for (let i = 0; i < Math.min(requiredVideos, uncompleted.length); i++) {
+        todayLessons.push(uncompleted[i]);
+      }
+    });
 
     // Project Tomorrow's list (sequentially next videos!)
     const tomorrowLessons: any[] = [];

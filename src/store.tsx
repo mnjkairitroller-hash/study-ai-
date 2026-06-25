@@ -23,6 +23,7 @@ export interface UserData {
     videos: { id: string; title: string; videoUrl: string; subject: string; duration?: number }[];
   } | null;
   lastRoutinePenaltyDate?: string;
+  dailyQuizLastCompletedDate?: string;
   redemptionHistory?: { id: string; title: string; cost: number; date: string; coupon: string }[];
 }
 
@@ -136,7 +137,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
           } else {
             // Create initial user data ONLY if we are online and sure it doesn't exist on server
-            if (!(docSnap as any).metadata?.fromCache) {
+            const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+            if (!(docSnap as any).metadata?.fromCache && !isOffline) {
               const initialData: UserData = {
                 ...DEFAULT_USER_DATA,
                 displayName: currentUser.displayName || currentUser.email?.split('@')[0] || 'Student',

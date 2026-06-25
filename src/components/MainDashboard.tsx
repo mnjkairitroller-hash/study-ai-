@@ -215,8 +215,13 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
     if (e) e.stopPropagation();
     if (!userData || !userData.currentRoutine) return;
     
-    // Filter out this video completely from currentRoutine.videos
-    const updatedVideos = userData.currentRoutine.videos.filter((v: any) => v.id !== videoId);
+    // Set isDeleted: true for this video instead of completely removing it
+    const updatedVideos = userData.currentRoutine.videos.map((v: any) => {
+      if (v.id === videoId) {
+        return { ...v, isDeleted: true };
+      }
+      return v;
+    });
     
     await updateUserData({
       currentRoutine: {
@@ -485,7 +490,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
   // Daily Class 8 MCQ states
   const class8QuizKey = `class8_quiz_${user?.uid || 'guest'}_${new Date().toDateString()}`;
   const [class8QuizSolvedToday, setClass8QuizSolvedToday] = useState<boolean>(() => {
-    return localStorage.getItem(class8QuizKey) === 'completed';
+    return localStorage.getItem(class8QuizKey) === 'completed' || userData?.dailyQuizLastCompletedDate === new Date().toDateString();
   });
   const [class8QuizStarted, setClass8QuizStarted] = useState<boolean>(false);
   const [class8QuizIdx, setClass8QuizIdx] = useState<number>(0);
@@ -576,7 +581,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
   };
 
   useEffect(() => {
-    setClass8QuizSolvedToday(localStorage.getItem(class8QuizKey) === 'completed');
+    setClass8QuizSolvedToday(localStorage.getItem(class8QuizKey) === 'completed' || userData?.dailyQuizLastCompletedDate === new Date().toDateString());
     setClass8QuizStarted(false);
     setClass8QuizIdx(0);
     setClass8QuizCorrectScore(0);
@@ -584,7 +589,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
     setClass8QuizSelectedOpt(null);
     setClass8QuizAnswered(false);
     setClass8PointsNet(0);
-  }, [class8QuizKey]);
+  }, [class8QuizKey, userData?.dailyQuizLastCompletedDate]);
 
   const handleClass8QuizAnswer = async (optIdx: number) => {
     if (class8QuizAnswered) return;
@@ -604,7 +609,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
     }
   };
 
-  const handleClass8QuizNext = () => {
+  const handleClass8QuizNext = async () => {
     if (class8QuizIdx < 9) {
       setClass8QuizIdx(prev => prev + 1);
       setClass8QuizSelectedOpt(null);
@@ -613,6 +618,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
       localStorage.setItem(class8QuizKey, 'completed');
       setClass8QuizSolvedToday(true);
       setClass8QuizStarted(false);
+      await updateUserData({ dailyQuizLastCompletedDate: new Date().toDateString() });
       if (class8PointsNet > 0) {
         confetti({
           particleCount: 120,
@@ -676,7 +682,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
     }
   };
 
-  const generateRoutine = () => {
+  const generateRoutine = (excludedIds: string[] = []) => {
     if (!chapters.length || !userData) return [];
 
     // 1. Group chapters by subject
@@ -724,7 +730,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
       for (const chapter of subjectChapters) {
         if (chapter.videos && chapter.videos.length > 0) {
           const uncompletedVideos = chapter.videos.map((v: any, idx: number) => ({ ...v, partIdx: idx })).filter((video: any) => 
-            !userData.completedLessons?.includes(video.id)
+            !userData.completedLessons?.includes(video.id) && !excludedIds.includes(video.id)
           );
 
           for (const video of uncompletedVideos) {
@@ -889,11 +895,12 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
     runRoutineCheck();
   }, [user, userData, chapters, checkingRoutine]);
 
-  const todayRoutine = generateRoutine().filter(video => !userData?.completedLessons?.includes(video.id));
+  // Determine explicitly excluded videos (shifted or deleted today)
+  const excludedIdsToday = (userData?.currentRoutine?.date === new Date().toDateString())
+    ? userData.currentRoutine.videos.filter((v: any) => v.isShifted || v.isDeleted).map((v: any) => v.id)
+    : [];
 
-  const activeRoutineVideosRaw = ((userData?.currentRoutine && userData.currentRoutine.date === new Date().toDateString())
-    ? userData.currentRoutine.videos.filter((video: any) => !video.isShifted)
-    : todayRoutine).filter(video => !userData?.completedLessons?.includes(video.id));
+  const activeRoutineVideosRaw = generateRoutine(excludedIdsToday);
 
   const activeRoutineVideos = activeRoutineVideosRaw.map((video: any) => {
     // If chapters are still loading, default to showing the cached video metadata safely 
@@ -1577,6 +1584,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
           </motion.div>
 
           {/* Class 8th Daily 10-MCQ Challenge */}
+          {!class8QuizSolvedToday && (
           <motion.div variants={item} className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-6 shadow-sm relative overflow-hidden">
             <div className="absolute top-0 right-0 p-5 opacity-5 pointer-events-none">
               <BrainCircuit size={100} />
@@ -1597,40 +1605,6 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
                 <Sparkles size={11} /> +1 / +0 Pt
               </div>
             </div>
-
-            {/* STEP 1: SOLVED / COMPLETED CARD */}
-            {class8QuizSolvedToday && !class8QuizStarted && (
-              <div className="space-y-4 pt-2 text-center py-4">
-                <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-500 rounded-full flex items-center justify-center mx-auto border border-emerald-100 dark:border-emerald-900/40">
-                  <CheckCircle2 size={32} />
-                </div>
-                <div className="space-y-1">
-                  <h4 className="font-extrabold text-slate-800 dark:text-white text-base">Completed for Today!</h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto font-medium">
-                    Excellent focus! You have successfully mastered your Class 8th concepts. Your rank is growing on the live leaderboard!
-                  </p>
-                </div>
-                <div className="bg-slate-50 dark:bg-slate-950/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80 max-w-xs mx-auto text-xs space-y-2 text-left font-semibold">
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-500">Correct answers:</span>
-                    <span className="text-emerald-500 font-extrabold">{class8QuizCorrectScore || 8} / 10</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-500">Incorrect answers:</span>
-                    <span className="text-red-500 font-extrabold">{class8QuizIncorrectScore || 2} / 10</span>
-                  </div>
-                  <div className="border-t border-slate-100 dark:border-slate-800 pt-2 flex justify-between items-center">
-                    <span className="text-slate-700 dark:text-slate-300">Net Points Change:</span>
-                    <span className={`font-black ${(class8PointsNet || 6) >= 0 ? "text-emerald-500" : "text-red-500"}`}>
-                      {(class8PointsNet || 6) >= 0 ? `+${class8PointsNet || 6}` : class8PointsNet || 6} Points
-                    </span>
-                  </div>
-                </div>
-                <p className="text-[10px] text-indigo-500/85 font-bold tracking-wider uppercase">
-                  ⚡ Come back tomorrow for 10 new Class 8 boosters! ⚡
-                </p>
-              </div>
-            )}
 
             {/* STEP 2: NOT STARTED / LOADING CARD */}
             {!class8QuizSolvedToday && !class8QuizStarted && (
@@ -1802,6 +1776,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
               </div>
             )}
           </motion.div>
+          )}
 
           {/* Interactive Weekly Micro Calendar Streak tracker */}
           <motion.div variants={item} className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
