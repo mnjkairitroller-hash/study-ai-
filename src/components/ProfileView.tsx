@@ -508,10 +508,10 @@ export default function ProfileView() {
               const isCompleted = userData.completedLessons?.includes(video.id);
               const formattedDuration = video.duration 
                 ? `${Math.floor(video.duration / 60)}:${(video.duration % 60).toString().padStart(2, '0')}`
-                : '20:00';
+                : null;
 
               const ytId = extractYtId(video.videoUrl);
-              const thumbnailUrl = ytId ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` : undefined;
+              const thumbnailUrl = ytId ? `https://img.youtube.com/vi/${ytId}/maxresdefault.jpg` : undefined;
 
               return (
                 <div 
@@ -592,9 +592,11 @@ export default function ProfileView() {
                     </div>
 
                     <div className="absolute bottom-2 left-2 right-2 flex justify-between items-end z-10">
-                      <div className="text-white text-xs font-bold bg-black/60 px-2 py-1 rounded backdrop-blur-sm flex items-center gap-1">
-                        <Clock3 size={12} /> {formattedDuration}
-                      </div>
+                      {formattedDuration && (
+                        <div className="text-white text-xs font-bold bg-black/60 px-2 py-1 rounded backdrop-blur-sm flex items-center gap-1">
+                          <Clock3 size={12} /> {formattedDuration}
+                        </div>
+                      )}
                     </div>
                   </div>
 

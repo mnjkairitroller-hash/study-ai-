@@ -521,7 +521,7 @@ export default function ChapterDetailsView({ chapter, setTab, setPlayingVideo }:
 
                         <div className="relative aspect-video w-[6rem] sm:w-[6.8rem] bg-slate-800 rounded-lg overflow-hidden shrink-0 shadow-inner">
                           <img 
-                            src={`https://img.youtube.com/vi/${extractYtId(video.videoUrl)}/hqdefault.jpg`} 
+                            src={`https://img.youtube.com/vi/${extractYtId(video.videoUrl)}/maxresdefault.jpg`} 
                             className={`w-full h-full object-cover transition-all duration-500 ${isCompleted ? 'opacity-90' : 'opacity-80 group-hover:opacity-100 group-hover:scale-105'}`} 
                             alt="Thumbnail" 
                           />

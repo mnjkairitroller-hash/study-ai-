@@ -190,8 +190,7 @@ Rules:
       });
 
       if (!response.ok) {
-        // Fallback to static 1200 seconds (20 mins - which is < 30 mins)
-        return res.json({ success: true, duration: 1200 });
+        return res.json({ success: true, duration: null });
       }
 
       const html = await response.text();
@@ -200,7 +199,7 @@ Rules:
       const metaMatch = html.match(/<meta\s+itemprop="duration"\s+content="([^"]+)"/i) || 
                         html.match(/<meta\s+content="([A-Z0-9]+)"\s+itemprop="duration"/i);
       
-      let durationInSeconds = 1200; // default template: 20 minutes
+      let durationInSeconds = null; 
 
       if (metaMatch) {
          const isoDuration = metaMatch[1]; // e.g. "PT12M32S", "PT1H2M30S"
@@ -225,7 +224,7 @@ Rules:
            // Third fallback via approxDurationMs
            const approxMatch = html.match(/"approxDurationMs"\s*:\s*"(\d+)"/);
            if (approxMatch) {
-             durationInSeconds = Math.floor(parseInt(approxMatch[1]) / 1005);
+             durationInSeconds = Math.floor(parseInt(approxMatch[1]) / 1000);
            }
          }
       }
@@ -233,7 +232,7 @@ Rules:
       res.json({ success: true, duration: durationInSeconds });
     } catch (err: any) {
       console.error("YT duration extraction error:", err);
-      res.json({ success: true, duration: 1200 }); // Graceful fallback
+      res.json({ success: true, duration: null }); 
     }
   });
 

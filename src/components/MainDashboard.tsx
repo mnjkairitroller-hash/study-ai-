@@ -682,7 +682,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
     }
   };
 
-  const generateRoutine = (excludedIds: string[] = []) => {
+  const generateRoutine = (excludedIds: string[] = [], pushedIds: string[] = []) => {
     if (!chapters.length || !userData) return [];
 
     // 1. Group chapters by subject
@@ -698,6 +698,27 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
     const routineVideos: any[] = [];
     const todayDay = new Date().getDay();
     const isEnglishDay = todayDay === 1 || todayDay === 4;
+
+    // Add pushed videos first
+    if (pushedIds.length > 0) {
+      chapters.forEach(chapter => {
+        if (chapter.videos) {
+          chapter.videos.forEach((v: any, idx: number) => {
+            if (pushedIds.includes(v.id) && !userData.completedLessons?.includes(v.id)) {
+              routineVideos.push({
+                ...v,
+                subject: chapter.subject,
+                chapterTitle: chapter.title,
+                partNumber: idx + 1,
+                chapterId: chapter.id,
+                isExtraClass: true,
+                isPushed: true
+              });
+            }
+          });
+        }
+      });
+    }
 
     // 2. Sort subjects dynamically so we have a consistent priority listing (Math, Science, English, etc.)
     const sortedSubjects = Object.keys(chaptersBySubject).sort((a, b) => {
@@ -730,7 +751,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
       for (const chapter of subjectChapters) {
         if (chapter.videos && chapter.videos.length > 0) {
           const uncompletedVideos = chapter.videos.map((v: any, idx: number) => ({ ...v, partIdx: idx })).filter((video: any) => 
-            !userData.completedLessons?.includes(video.id) && !excludedIds.includes(video.id)
+            !userData.completedLessons?.includes(video.id) && !excludedIds.includes(video.id) && !pushedIds.includes(video.id)
           );
 
           for (const video of uncompletedVideos) {
@@ -780,7 +801,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
         } catch (err) {
           console.error("Error resolving duration: ", err);
         }
-        return { ...v, duration: 1200 }; // 20m default template
+        return { ...v }; 
       })
     );
   };
@@ -900,7 +921,11 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
     ? userData.currentRoutine.videos.filter((v: any) => v.isShifted || v.isDeleted).map((v: any) => v.id)
     : [];
 
-  const activeRoutineVideosRaw = generateRoutine(excludedIdsToday);
+  const pushedIdsToday = (userData?.currentRoutine?.date === new Date().toDateString())
+    ? (userData.currentRoutine.pushedVideoIds || [])
+    : [];
+
+  const activeRoutineVideosRaw = generateRoutine(excludedIdsToday, pushedIdsToday);
 
   const activeRoutineVideos = activeRoutineVideosRaw.map((video: any) => {
     // If chapters are still loading, default to showing the cached video metadata safely 
@@ -924,12 +949,16 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
     }
 
     if (foundVideo && foundChapter) {
+      // Restore duration if it was resolved and saved in currentRoutine
+      const savedRoutineVid = userData?.currentRoutine?.videos?.find((v: any) => v.id === video.id);
+      
       return {
         ...video,
         title: foundVideo.title,
         videoUrl: foundVideo.videoUrl,
         chapterTitle: foundChapter.title,
-        subject: foundChapter.subject || video.subject
+        subject: foundChapter.subject || video.subject,
+        duration: savedRoutineVid?.duration || video.duration
       };
     }
     
@@ -1471,7 +1500,7 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
                     >
                       {/* Video Thumbnail (16:9 Aspect Ratio like YouTube) - Flush with top/sides */}
                       <div className="relative aspect-video w-full bg-slate-900 dark:bg-slate-950 overflow-hidden rounded-t-[1.25rem]">
-                        <div className="absolute inset-0 bg-cover bg-center group-hover:scale-105 transition-transform duration-500 ease-in-out opacity-90" style={{ backgroundImage: `url('https://img.youtube.com/vi/${extractId}/hqdefault.jpg')` }}></div>
+                        <div className="absolute inset-0 bg-cover bg-center group-hover:scale-105 transition-transform duration-500 ease-in-out opacity-90" style={{ backgroundImage: `url('https://img.youtube.com/vi/${extractId}/maxresdefault.jpg')` }}></div>
                         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                         
                         {/* Play Button Overlay */}
