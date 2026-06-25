@@ -403,7 +403,11 @@ export default function ChapterDetailsView({ chapter, setTab, setPlayingVideo }:
             {chapterData.videos?.length || 0} Videos
           </h2>
           <button 
-            onClick={() => setIsAddOpen(true)}
+            onClick={() => {
+              setNewUrl('');
+              setNewTitle(`Part ${(chapterData.videos?.length || 0) + 1}`);
+              setIsAddOpen(true);
+            }}
             className="text-sm font-bold bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-full flex items-center gap-1 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors"
           >
             <Plus size={16} /> Add Part
@@ -630,7 +634,7 @@ export default function ChapterDetailsView({ chapter, setTab, setPlayingVideo }:
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
                     required
-                    placeholder="e.g. Introduction"
+                    placeholder="e.g. Part 1"
                     className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>

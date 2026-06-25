@@ -1419,11 +1419,11 @@ export default function MainDashboard({ setTab, setPlayingVideo }: { setTab: (ta
               whileHover={{ scale: 1.05 }}
               className="w-16 h-16 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white text-3xl font-extrabold shadow-lg shadow-indigo-500/30 overflow-hidden border-2 border-white dark:border-slate-800 z-10"
             >
-              {user?.displayName?.charAt(0) || 'U'}
+              {(userData?.displayName || user?.displayName || 'U').charAt(0)}
             </motion.div>
             <div className="z-10">
               <h2 className="text-2xl font-bold tracking-tight text-slate-800 dark:text-slate-100 font-sans">
-                Hello, {user?.displayName?.split(' ')[0] || 'Student'}! 👋
+                Hello, {(userData?.displayName || user?.displayName || 'Student').split(' ')[0]}! 👋
               </h2>
               <p className="text-indigo-600 dark:text-indigo-400 font-medium text-sm flex items-center gap-1 mt-0.5">
                 <Sparkles size={14} /> Ready to learn today?

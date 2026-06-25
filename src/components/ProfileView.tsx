@@ -22,6 +22,10 @@ export default function ProfileView() {
   const [restoreSuccess, setRestoreSuccess] = useState('');
   const [isRestoring, setIsRestoring] = useState<string | null>(null);
 
+  // Profile Edit States
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [newNameInput, setNewNameInput] = useState(userData?.displayName || user?.displayName || 'Student');
+
   // Points Adjustment States
   const [adjustPointsPinInput, setAdjustPointsPinInput] = useState('');
   const [pointsAmountInput, setPointsAmountInput] = useState('');
@@ -103,6 +107,31 @@ export default function ProfileView() {
     return 'bg-slate-50 dark:bg-slate-900/40 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-800/30';
   };
 
+  const extractYtId = (url: string) => {
+    if (!url) return null;
+    const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))((\w|-){11})/);
+    return match ? match[1] : null;
+  };
+
+  const pushToToday = async (video: any) => {
+    if (!userData) return;
+    const todayStr = new Date().toDateString();
+    const currentRoutine = (userData.currentRoutine?.date === todayStr)
+      ? userData.currentRoutine
+      : { date: todayStr, videos: [], pushedVideoIds: [] };
+
+    const pushedVideoIds = [...(currentRoutine.pushedVideoIds || []), video.id];
+    const newRoutine = { ...currentRoutine, pushedVideoIds };
+
+    // Update routine videos so it appears in the dashboard without needing regeneration
+    const isAlreadyInVideos = (newRoutine.videos || []).some((v: any) => v.id === video.id);
+    if (!isAlreadyInVideos) {
+       newRoutine.videos = [...(newRoutine.videos || []), { ...video, isPushed: true }];
+    }
+
+    await updateUserData({ currentRoutine: newRoutine });
+  };
+
   // Automated 3-day scheduling generator based on all available chapter material in the database
   const getTimelineLessons = () => {
     if (!chapters.length) return { today: [], tomorrow: [], dayAfter: [] };
@@ -167,6 +196,10 @@ export default function ProfileView() {
     const excludedIdsToday = (userData?.currentRoutine?.date === todayStr)
       ? (userData.currentRoutine.videos || []).filter((v: any) => v.isShifted || v.isDeleted).map((v: any) => v.id)
       : [];
+    
+    const pushedIdsToday = (userData?.currentRoutine?.date === todayStr)
+      ? (userData.currentRoutine.pushedVideoIds || [])
+      : [];
 
     // Dynamic fallback matching the dashboard
     const todayDay = new Date().getDay();
@@ -180,12 +213,21 @@ export default function ProfileView() {
       const requiredVideos = (isMath && !isEnglishDay) ? 2 : 1;
 
       const queue = subjectQueues[subject] || [];
-      const uncompleted = queue.filter(vid => !completed.includes(vid.id) && !excludedIdsToday.includes(vid.id));
+      const uncompleted = queue.filter(vid => !completed.includes(vid.id) && !excludedIdsToday.includes(vid.id) && !pushedIdsToday.includes(vid.id));
       
       for (let i = 0; i < Math.min(requiredVideos, uncompleted.length); i++) {
         todayLessons.push(uncompleted[i]);
       }
     });
+
+    // Add pushed videos
+    if (pushedIdsToday.length > 0) {
+      Object.values(subjectQueues).flat().forEach((vid: any) => {
+        if (pushedIdsToday.includes(vid.id) && !completed.includes(vid.id) && !todayLessons.some(v => v.id === vid.id)) {
+          todayLessons.push(vid);
+        }
+      });
+    }
 
     // Project Tomorrow's list (sequentially next videos!)
     const tomorrowLessons: any[] = [];
@@ -196,7 +238,7 @@ export default function ProfileView() {
       const isMath = (subject?.toLowerCase() || '').includes('math');
       const queue = subjectQueues[subject] || [];
       
-      const todayVids = todayLessons.filter(v => v.subject === subject);
+      const todayVids = todayLessons.filter(v => v.subject === subject && !pushedIdsToday.includes(v.id));
       let lastViewedIdx = -1;
       
       if (todayVids.length > 0) {
@@ -328,9 +370,50 @@ export default function ProfileView() {
       {/* Profile Header */}
       <div className="flex flex-col items-center mt-4">
         <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center text-white text-4xl font-bold shadow-xl mb-4 border-4 border-white/10">
-          {user?.displayName?.charAt(0) || 'U'}
+          {(userData?.displayName || user?.displayName || 'U').charAt(0)}
         </div>
-        <h2 className="text-2xl font-bold tracking-tight text-center">{user?.displayName || 'Student'}</h2>
+        {isEditingName ? (
+          <div className="flex items-center gap-2 mb-1">
+            <input 
+              type="text" 
+              value={newNameInput}
+              onChange={(e) => setNewNameInput(e.target.value)}
+              className="px-3 py-1.5 text-sm bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white max-w-[180px]"
+              autoFocus
+            />
+            <button 
+              onClick={async () => {
+                if (newNameInput.trim()) {
+                  await updateUserData({ displayName: newNameInput.trim() });
+                }
+                setIsEditingName(false);
+              }}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-bold text-sm transition-colors"
+            >
+              Save
+            </button>
+            <button 
+              onClick={() => {
+                setNewNameInput(userData?.displayName || user?.displayName || 'Student');
+                setIsEditingName(false);
+              }}
+              className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 font-bold text-sm px-2 py-1.5 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 mb-1 group">
+            <h2 className="text-2xl font-bold tracking-tight text-center">{userData?.displayName || user?.displayName || 'Student'}</h2>
+            <button 
+              onClick={() => setIsEditingName(true)} 
+              className="text-slate-400 hover:text-indigo-600 transition-colors opacity-0 group-hover:opacity-100 p-1"
+              title="Edit Name"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+            </button>
+          </div>
+        )}
         <p className="app-text-muted text-center">{user?.email}</p>
         <div className="mt-3 flex flex-col items-center gap-1.5">
           <div className="text-sm font-bold bg-black/10 dark:bg-white/10 px-3 py-1 rounded-full uppercase tracking-wider">
@@ -424,76 +507,95 @@ export default function ProfileView() {
               const isCompleted = userData.completedLessons?.includes(video.id);
               const durationMin = video.duration ? Math.round(video.duration / 60) : 20;
 
+              const ytId = extractYtId(video.videoUrl);
+              const thumbnailUrl = ytId ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` : undefined;
+
               return (
                 <div 
                   key={video.id}
-                  className={`p-4 rounded-2xl transition-all border flex flex-col justify-between h-40 ${
+                  className={`rounded-2xl transition-all border flex flex-col overflow-hidden ${
                     isCompleted 
-                      ? 'border-emerald-300 dark:border-emerald-900 bg-emerald-500/5 dark:bg-emerald-950/10 shadow-sm relative overflow-hidden' 
+                      ? 'border-emerald-300 dark:border-emerald-900 bg-emerald-500/5 dark:bg-emerald-950/10 shadow-sm' 
                       : activeDayTab === 'today'
                         ? 'border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/5 dark:bg-indigo-950/5 hover:border-indigo-300 dark:hover:border-indigo-800 hover:shadow-md'
                         : 'border-slate-100 dark:border-slate-800/85 hover:border-slate-300 bg-slate-50/40'
                   }`}
                 >
-                  {isCompleted && (
-                    <div className="absolute right-[-15px] top-[15px] bg-emerald-500 text-white text-[8px] font-black uppercase tracking-widest px-5 py-1 rotate-45 shadow-sm">
-                      Done ✨
-                    </div>
-                  )}
+                  {/* Thumbnail Header */}
+                  <div className="relative h-32 w-full bg-slate-200 dark:bg-slate-800 shrink-0">
+                    {thumbnailUrl ? (
+                      <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url('${thumbnailUrl}')` }}></div>
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center text-slate-400">
+                        <PlayCircle size={32} />
+                      </div>
+                    )}
+                    
+                    {/* Dark gradient overlay for readability */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+                    
+                    {isCompleted && (
+                      <div className="absolute right-[-20px] top-[15px] bg-emerald-500 text-white text-[9px] font-black uppercase tracking-widest px-8 py-1.5 rotate-45 shadow-sm z-10">
+                        Done ✨
+                      </div>
+                    )}
 
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-start gap-1">
+                    <div className="absolute top-2 left-2 z-10">
                       <span className={`text-[10px] uppercase font-black px-2.5 py-1 rounded-full ${getSubjectStyles(video.subject)}`}>
                         {video.subject}
                       </span>
-                      {isCompleted ? (
-                        <span className="flex items-center gap-1 text-[10px] uppercase font-black px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-900/20 shadow-sm">
-                          <CheckCircle2 size={10} strokeWidth={3} className="text-emerald-500" /> Completed
-                        </span>
-                      ) : activeDayTab === 'today' ? (
-                        <span className="flex items-center gap-1 text-[10px] uppercase font-black px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-400 border border-amber-200/50 dark:border-amber-900/10">
-                          <Clock3 size={10} /> Active Today
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-[10px] uppercase font-black px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 border border-slate-200/50 dark:border-slate-800/20">
-                          <Lock size={10} /> Upcoming
-                        </span>
-                      )}
                     </div>
 
-                    <div>
-                      <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200 line-clamp-1 pr-6">
-                        {video.title}
-                      </h4>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1 mt-0.5 font-medium">
-                        Chapter: {video.chapterTitle || 'Lessons'}
-                      </p>
+                    <div className="absolute bottom-2 left-2 right-2 flex justify-between items-end z-10">
+                      <div className="text-white text-xs font-bold bg-black/60 px-2 py-1 rounded backdrop-blur-sm flex items-center gap-1">
+                        <Clock3 size={12} /> {durationMin} Mins
+                      </div>
+
+                      {activeDayTab !== 'today' && !isCompleted && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            pushToToday(video);
+                          }}
+                          className="bg-white/20 hover:bg-white/40 backdrop-blur-md text-white text-[10px] font-bold px-2 py-1 rounded transition-colors flex items-center gap-1 border border-white/30"
+                          title="Push this lesson to Today"
+                        >
+                          <Calendar size={12} /> Push to Today
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/45">
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                      <Clock3 size={12} /> {durationMin} Mins
-                    </span>
+                  <div className="p-4 flex flex-col flex-1 justify-between gap-3">
+                    <div>
+                      <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200 line-clamp-2 leading-snug">
+                        {video.title}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1 mt-1 font-medium">
+                        Chapter: {video.chapterTitle || 'Lessons'}
+                      </p>
+                    </div>
 
-                    {isCompleted ? (
-                      <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                        <CheckCircle2 size={13} strokeWidth={3} /> +50 XP Complete
-                      </span>
-                    ) : activeDayTab === 'today' ? (
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-black uppercase text-pink-500 bg-pink-100/30 px-1.5 py-0.5 rounded">
-                          +50 XP
+                    <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800/45 mt-auto">
+                      {isCompleted ? (
+                        <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                          <CheckCircle2 size={13} strokeWidth={3} /> +50 XP Complete
                         </span>
-                        <span className="text-xs font-black text-indigo-500 flex items-center gap-1 select-none animate-pulse">
-                          Start on Dashboard <PlayCircle size={14} />
+                      ) : activeDayTab === 'today' ? (
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-[10px] font-black uppercase text-pink-500 bg-pink-100/50 dark:bg-pink-500/20 px-1.5 py-0.5 rounded">
+                            +50 XP
+                          </span>
+                          <span className="text-[11px] font-black text-indigo-500 dark:text-indigo-400 flex items-center gap-1 select-none animate-pulse">
+                            Start on Dashboard <PlayCircle size={14} />
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-slate-400 flex items-center gap-1 select-none font-medium">
+                          Unlocks tomorrow <Lock size={11} />
                         </span>
-                      </div>
-                    ) : (
-                      <span className="text-[11px] text-slate-400 flex items-center gap-1 select-none font-medium">
-                        Unlocks tomorrow <Lock size={11} />
-                      </span>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </div>
               );

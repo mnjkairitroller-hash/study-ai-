@@ -109,6 +109,13 @@ ${formattedChapters}
 
 Each question must be directly related or mapped to one of the chapters listed above, focusing on core concepts covered in standard Class 8 curriculum.
 
+IMPORTANT RULES FOR UNIQUENESS:
+- Generate a completely unique, randomized set of 10 questions.
+- DO NOT repeat standard or generic questions.
+- Select different, nuanced concepts from within these chapters to test.
+- Use a unique angle or scenario for the questions if possible.
+- Current Request Seed for Randomization: ${Math.random().toString(36).substring(2, 10)} ${new Date().toISOString()}
+
 Rules:
 1. Provide exactly 4 clear options for each question.
 2. Distribute the 10 questions across the provided chapters.
